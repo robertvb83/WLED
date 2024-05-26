@@ -18,6 +18,8 @@ typedef struct TetrisAI_data
   uint8_t   colorOffset;
   uint8_t   colorInc;
   uint8_t   mistaceCountdown;
+  uint16_t segcols;
+  uint16_t segrows;
 } tetrisai_data;
 
 void drawGrid(TetrisAIGame* tetris, TetrisAI_data* tetrisai_data)
@@ -116,12 +118,15 @@ uint16_t mode_2DTetrisAI()
   //range 0 - 16
   tetrisai_data->colorInc = SEGMENT.custom2 >> 4;
 
-  if (!tetrisai_data->tetris || (tetrisai_data->tetris.nLookAhead != nLookAhead
+  if (tetrisai_data->tetris.nLookAhead != nLookAhead
+    || tetrisai_data->segcols != cols
+    || tetrisai_data->segrows != rows
     || tetrisai_data->showNext != SEGMENT.check1
     || tetrisai_data->showBorder != SEGMENT.check2
-      )
-    )
+  )
   {
+    tetrisai_data->segcols = cols;
+    tetrisai_data->segrows = rows;
     tetrisai_data->showNext = SEGMENT.check1;
     tetrisai_data->showBorder = SEGMENT.check2;
 
@@ -143,35 +148,37 @@ uint16_t mode_2DTetrisAI()
     }
 
     tetrisai_data->tetris = TetrisAIGame(gridWidth, gridHeight, nLookAhead, piecesData, numPieces);
+    tetrisai_data->tetris.state = TetrisAIGame::States::INIT;
     SEGMENT.fill(SEGCOLOR(1));
   }
 
   if (tetrisai_data->intelligence != SEGMENT.custom1)
   {
     tetrisai_data->intelligence = SEGMENT.custom1;
-    double dui = 0.2 - (0.2 * (tetrisai_data->intelligence / 255.0));
+    float dui = 0.2f - (0.2f * (tetrisai_data->intelligence / 255.0f));
 
-    tetrisai_data->tetris.ai.aHeight = -0.510066 + dui;
-    tetrisai_data->tetris.ai.fullLines = 0.760666 - dui;
-    tetrisai_data->tetris.ai.holes = -0.35663 + dui;
-    tetrisai_data->tetris.ai.bumpiness = -0.184483 + dui;
+    tetrisai_data->tetris.ai.aHeight = -0.510066f + dui;
+    tetrisai_data->tetris.ai.fullLines = 0.760666f - dui;
+    tetrisai_data->tetris.ai.holes = -0.35663f + dui;
+    tetrisai_data->tetris.ai.bumpiness = -0.184483f + dui;
   }
 
   if (tetrisai_data->tetris.state == TetrisAIGame::ANIMATE_MOVE)
   {
-    if (millis() - tetrisai_data->lastTime > msDelayMove)
+    
+    if (strip.now - tetrisai_data->lastTime > msDelayMove)
     {
       drawGrid(&tetrisai_data->tetris, tetrisai_data);
-      tetrisai_data->lastTime = millis();
+      tetrisai_data->lastTime = strip.now;
       tetrisai_data->tetris.poll();
     }
   }
   else if (tetrisai_data->tetris.state == TetrisAIGame::ANIMATE_GAME_OVER)
   {
-    if (millis() - tetrisai_data->lastTime > msDelayGameOver)
+    if (strip.now - tetrisai_data->lastTime > msDelayGameOver)
     {
       drawGrid(&tetrisai_data->tetris, tetrisai_data);
-      tetrisai_data->lastTime = millis();
+      tetrisai_data->lastTime = strip.now;
       tetrisai_data->tetris.poll();
     }
   }
