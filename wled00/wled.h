@@ -316,8 +316,6 @@ WLED_GLOBAL bool rlyOpenDrain _INIT(RLYODRAIN);
   constexpr uint8_t hardwareTX = 1;
 #endif
 
-//WLED_GLOBAL byte presetToApply _INIT(0);
-
 WLED_GLOBAL char ntpServerName[33] _INIT("0.wled.pool.ntp.org");   // NTP server to use
 
 // WiFi CONFIG (all these can be changed via web UI, no need to set them here)
@@ -838,10 +836,6 @@ WLED_GLOBAL float latitude _INIT(WLED_LAT);
 WLED_GLOBAL time_t sunrise _INIT(0);
 WLED_GLOBAL time_t sunset _INIT(0);
 WLED_GLOBAL Toki toki _INIT(Toki());
-
-// Temp buffer
-WLED_GLOBAL char* obuf;
-WLED_GLOBAL uint16_t olen _INIT(0);
 
 // General filesystem
 WLED_GLOBAL size_t fsBytesUsed _INIT(0);
