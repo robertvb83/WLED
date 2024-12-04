@@ -114,7 +114,7 @@ uint16_t mode_2DTetrisAI()
   const uint16_t rows = SEGMENT.virtualHeight();
 
   //range 0 - 1024ms => 1024/255 ~ 4
-  uint16_t msDelayMove = 1024 - (4 * SEGMENT.speed);
+  uint16_t msDelayMove = 1020 - (4 * SEGMENT.speed);
   int16_t msDelayGameOver = msDelayMove / 4;
 
   //range 0 - 2 (not including current)
