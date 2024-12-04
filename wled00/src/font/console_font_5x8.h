@@ -2117,8 +2117,8 @@ static const unsigned char console_font_5x8[] PROGMEM = {
     // 0x00,  /* 00000 */
 
     /*
-    * code=176, hex=0xB0, ascii="!0"
-    */
+     * code=176, hex=0xB0, ascii="!0"
+     */
     0xA8,  /* 10101 */
     0x50,  /* 01010 */
     0xA8,  /* 10101 */
