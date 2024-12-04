@@ -115,7 +115,8 @@ uint16_t mode_2DTetrisAI()
 
   //range 0 - 1024ms => 1024/255 ~ 4
   uint16_t msDelayMove = 1020 - (4 * SEGMENT.speed);
-  int16_t msDelayGameOver = msDelayMove / 4;
+  //int16_t msDelayGameOver = msDelayMove / 4;
+  int16_t msDelayGameOver = 0;
 
   //range 0 - 2 (not including current)
   uint8_t nLookAhead = SEGMENT.intensity ? (SEGMENT.intensity >> 7) + 2 : 1;
