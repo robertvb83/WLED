@@ -1765,8 +1765,8 @@ static const unsigned char console_font_4x6[] PROGMEM = {
     // 0x00,  /* 0000 */
 
     /*
-    * code=176, hex=0xB0, ascii="!0"
-    */
+     * code=176, hex=0xB0, ascii="!0"
+     */
     0x40,  /* 0100 */
     0x10,  /* 0001 */
     0x40,  /* 0100 */
