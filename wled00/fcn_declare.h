@@ -24,6 +24,10 @@ void handleIO();
 void IRAM_ATTR touchButtonISR();
 
 //cfg.cpp
+bool backupConfig();
+bool restoreConfig();
+bool verifyConfig();
+void resetConfig();
 bool deserializeConfig(JsonObject doc, bool fromFS = false);
 bool deserializeConfigFromFS();
 bool deserializeConfigSec();
@@ -114,10 +118,15 @@ bool readObjectFromFileUsingId(const char* file, uint16_t id, JsonDocument* dest
 bool readObjectFromFile(const char* file, const char* key, JsonDocument* dest);
 void updateFSInfo();
 void closeFile();
-inline bool writeObjectToFileUsingId(const String &file, uint16_t id, JsonDocument* content) { return writeObjectToFileUsingId(file.c_str(), id, content); };
-inline bool writeObjectToFile(const String &file, const char* key, JsonDocument* content) { return writeObjectToFile(file.c_str(), key, content); };
-inline bool readObjectFromFileUsingId(const String &file, uint16_t id, JsonDocument* dest) { return readObjectFromFileUsingId(file.c_str(), id, dest); };
-inline bool readObjectFromFile(const String &file, const char* key, JsonDocument* dest) { return readObjectFromFile(file.c_str(), key, dest); };
+inline bool writeObjectToFileUsingId(const String &file, uint16_t id, const JsonDocument* content) { return writeObjectToFileUsingId(file.c_str(), id, content); };
+inline bool writeObjectToFile(const String &file, const char* key, const JsonDocument* content) { return writeObjectToFile(file.c_str(), key, content); };
+inline bool readObjectFromFileUsingId(const String &file, uint16_t id, JsonDocument* dest, const JsonDocument* filter = nullptr) { return readObjectFromFileUsingId(file.c_str(), id, dest); };
+inline bool readObjectFromFile(const String &file, const char* key, JsonDocument* dest, const JsonDocument* filter = nullptr) { return readObjectFromFile(file.c_str(), key, dest); };
+bool copyFile(const char* src_path, const char* dst_path);
+bool backupFile(const char* filename);
+bool restoreFile(const char* filename);
+bool validateJsonFile(const char* filename);
+void dumpFilesToSerial();
 
 //hue.cpp
 void handleHue();
@@ -391,6 +400,8 @@ uint8_t extractModeSlider(uint8_t mode, uint8_t slider, char *dest, uint8_t maxL
 int16_t extractModeDefaults(uint8_t mode, const char *segVar);
 void checkSettingsPIN(const char *pin);
 uint16_t crc16(const unsigned char* data_p, size_t length);
+String computeSHA1(const String& input);
+String getDeviceId();
 uint16_t beatsin88_t(accum88 beats_per_minute_88, uint16_t lowest = 0, uint16_t highest = 65535, uint32_t timebase = 0, uint16_t phase_offset = 0);
 uint16_t beatsin16_t(accum88 beats_per_minute, uint16_t lowest = 0, uint16_t highest = 65535, uint32_t timebase = 0, uint16_t phase_offset = 0);
 uint8_t beatsin8_t(accum88 beats_per_minute, uint8_t lowest = 0, uint8_t highest = 255, uint32_t timebase = 0, uint8_t phase_offset = 0);
@@ -399,6 +410,15 @@ void enumerateLedmaps();
 uint8_t get_random_wheel_index(uint8_t pos);
 float mapf(float x, float in_min, float in_max, float out_min, float out_max);
 
+void handleBootLoop();   // detect and handle bootloops
+#ifndef ESP8266
+void bootloopCheckOTA(); // swap boot image if bootloop is detected instead of restoring config
+#endif
+
+void handleBootLoop();   // detect and handle bootloops
+#ifndef ESP8266
+void bootloopCheckOTA(); // swap boot image if bootloop is detected instead of restoring config
+#endif
 // RAII guard class for the JSON Buffer lock
 // Modeled after std::lock_guard
 class JSONBufferGuard {

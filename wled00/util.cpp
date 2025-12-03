@@ -1,6 +1,19 @@
 #include "wled.h"
 #include "fcn_declare.h"
 #include "const.h"
+#ifdef ESP8266
+#include "user_interface.h" // for bootloop detection
+#include <Hash.h>            // for SHA1 on ESP8266
+#else
+#include <Update.h>
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4, 4, 0)
+  #include "esp32/rtc.h"    // for bootloop detection
+#elif ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(3, 3, 0)
+  #include "soc/rtc.h"
+#endif
+#include "mbedtls/sha1.h"   // for SHA1 on ESP32
+#include "esp_adc_cal.h"
+#endif
 
 
 //helper to get int value at a position in string
@@ -593,4 +606,241 @@ uint8_t get_random_wheel_index(uint8_t pos) {
 // float version of map()
 float mapf(float x, float in_min, float in_max, float out_min, float out_max) {
   return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+}
+
+// bootloop detection and handling
+// checks if the ESP reboots multiple times due to a crash or watchdog timeout
+// if a bootloop is detected: restore settings from backup, then reset settings, then switch boot image (and repeat)
+
+#define BOOTLOOP_INTERVAL_MILLIS 120000  // time limit between crashes: 120 seconds (2 minutes)
+#define BOOTLOOP_THRESHOLD       5     // number of consecutive crashes to trigger bootloop detection
+#define BOOTLOOP_ACTION_RESTORE  0     // default action: restore config from /bkp.cfg.json
+#define BOOTLOOP_ACTION_RESET    1     // if restore does not work, reset config (rename /cfg.json to /rst.cfg.json)
+#define BOOTLOOP_ACTION_OTA      2     // swap the boot partition
+#define BOOTLOOP_ACTION_DUMP     3     // nothing seems to help, dump files to serial and reboot (until hardware reset)
+
+// Platform-agnostic abstraction
+enum class ResetReason {
+  Power,
+  Software,
+  Crash,
+  Brownout
+};
+
+#ifdef ESP8266
+// Place variables in RTC memory via references, since RTC memory is not exposed via the linker in the Non-OS SDK
+// Use an offset of 32 as there's some hints that the first 128 bytes of "user" memory are used by the OTA system
+// Ref: https://github.com/esp8266/Arduino/blob/78d0d0aceacc1553f45ad8154592b0af22d1eede/cores/esp8266/Esp.cpp#L168
+static volatile uint32_t& bl_last_boottime = *(RTC_USER_MEM + 32);
+static volatile uint32_t& bl_crashcounter = *(RTC_USER_MEM + 33);
+static volatile uint32_t& bl_actiontracker = *(RTC_USER_MEM + 34);
+
+static inline ResetReason rebootReason() {
+  uint32_t resetReason = system_get_rst_info()->reason;
+  if (resetReason == REASON_EXCEPTION_RST
+      || resetReason == REASON_WDT_RST
+      || resetReason == REASON_SOFT_WDT_RST)
+      return ResetReason::Crash;
+  if (resetReason == REASON_SOFT_RESTART)
+    return ResetReason::Software;
+  return ResetReason::Power;
+}
+
+static inline uint32_t getRtcMillis() { return system_get_rtc_time() / 160; };  // rtc ticks ~160000Hz
+
+#else
+// variables in RTC_NOINIT memory persist between reboots (but not on hardware reset)
+RTC_NOINIT_ATTR static uint32_t bl_last_boottime;
+RTC_NOINIT_ATTR static uint32_t bl_crashcounter;
+RTC_NOINIT_ATTR static uint32_t bl_actiontracker;
+
+static inline ResetReason rebootReason() {
+  esp_reset_reason_t reason = esp_reset_reason();
+  if (reason == ESP_RST_BROWNOUT) return ResetReason::Brownout;
+  if (reason == ESP_RST_SW) return ResetReason::Software;
+  if (reason == ESP_RST_PANIC || reason == ESP_RST_WDT || reason == ESP_RST_INT_WDT || reason == ESP_RST_TASK_WDT) return ResetReason::Crash;
+  return ResetReason::Power;
+}
+
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4, 4, 0)
+static inline uint32_t getRtcMillis() { return esp_rtc_get_time_us() / 1000;  }
+#elif ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(3, 3, 0)
+static inline uint32_t getRtcMillis() { return rtc_time_slowclk_to_us(rtc_time_get(), rtc_clk_slow_freq_get_hz()) / 1000; }
+#endif
+
+void bootloopCheckOTA() { bl_actiontracker = BOOTLOOP_ACTION_OTA; } // swap boot image if bootloop is detected instead of restoring config
+
+#endif
+
+// detect bootloop by checking the reset reason and the time since last boot
+static bool detectBootLoop() {
+  uint32_t rtctime = getRtcMillis();
+  bool result = false;
+
+  switch(rebootReason()) {
+    case ResetReason::Power:
+      bl_actiontracker = BOOTLOOP_ACTION_RESTORE; // init action tracker if not an intentional reboot (e.g. from OTA or bootloop handler)
+      // fall through
+    case ResetReason::Software:
+      // no crash detected, reset counter
+      bl_crashcounter = 0;
+      break;
+
+    case ResetReason::Crash:
+    {
+      uint32_t rebootinterval = rtctime - bl_last_boottime;
+      if (rebootinterval < BOOTLOOP_INTERVAL_MILLIS) {
+        bl_crashcounter++;
+        if (bl_crashcounter >= BOOTLOOP_THRESHOLD) {
+          DEBUG_PRINTLN(F("!BOOTLOOP DETECTED!"));
+          bl_crashcounter = 0;
+          if(bl_actiontracker > BOOTLOOP_ACTION_DUMP) bl_actiontracker = BOOTLOOP_ACTION_RESTORE; // reset action tracker if out of bounds
+          result = true;
+        }
+      } else {
+        // Reset counter on long intervals to track only consecutive short-interval crashes
+        bl_crashcounter = 0;
+        // TODO: crash reporting goes here
+      }
+      break;
+    }
+
+    case ResetReason::Brownout:
+      // crash due to brownout can't be detected unless using flash memory to store bootloop variables
+      DEBUG_PRINTLN(F("brownout detected"));
+      //restoreConfig(); // TODO: blindly restoring config if brownout detected is a bad idea, need a better way (if at all)
+      break;
+  }
+
+  bl_last_boottime = rtctime; // store current runtime for next reboot
+
+  return result;
+}
+
+void handleBootLoop() {
+  DEBUG_PRINTF_P(PSTR("checking for bootloop: time %d, counter %d, action %d\n"), bl_last_boottime, bl_crashcounter, bl_actiontracker);
+  if (!detectBootLoop()) return; // no bootloop detected
+
+  switch(bl_actiontracker) {
+    case BOOTLOOP_ACTION_RESTORE:
+      restoreConfig();
+      ++bl_actiontracker;
+      break;
+    case BOOTLOOP_ACTION_RESET:
+      resetConfig();
+      ++bl_actiontracker;
+      break;
+    case BOOTLOOP_ACTION_OTA:
+#ifndef ESP8266
+      if(Update.canRollBack()) {
+        DEBUG_PRINTLN(F("Swapping boot partition..."));
+        Update.rollBack(); // swap boot partition
+      }
+      ++bl_actiontracker;
+      break;
+#else
+      // fall through
+#endif
+    case BOOTLOOP_ACTION_DUMP:
+      dumpFilesToSerial();
+      break;
+  }
+
+  ESP.restart(); // restart cleanly and don't wait for another crash
+}
+
+// Platform-agnostic SHA1 computation from String input
+String computeSHA1(const String& input) {
+  #ifdef ESP8266
+    return sha1(input); // ESP8266 has built-in sha1() function
+  #else
+    // ESP32: Compute SHA1 hash using mbedtls
+    unsigned char shaResult[20]; // SHA1 produces 20 bytes
+    mbedtls_sha1_context ctx;
+
+    mbedtls_sha1_init(&ctx);
+    mbedtls_sha1_starts_ret(&ctx);
+    mbedtls_sha1_update_ret(&ctx, (const unsigned char*)input.c_str(), input.length());
+    mbedtls_sha1_finish_ret(&ctx, shaResult);
+    mbedtls_sha1_free(&ctx);
+
+    // Convert to hexadecimal string
+    char hexString[41];
+    for (int i = 0; i < 20; i++) {
+      sprintf(&hexString[i*2], "%02x", shaResult[i]);
+    }
+    hexString[40] = '\0';
+
+    return String(hexString);
+  #endif
+}
+
+#ifdef ESP32
+String generateDeviceFingerprint() {
+  uint32_t fp[2] = {0, 0}; // create 64 bit fingerprint
+  esp_chip_info_t chip_info;
+  esp_chip_info(&chip_info);
+  esp_efuse_mac_get_default((uint8_t*)fp);
+  fp[1] ^= ESP.getFlashChipSize();
+  #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4, 4, 4)
+  fp[0] ^= chip_info.full_revision | (chip_info.model << 16);
+  #else
+  fp[0] ^= chip_info.revision | (chip_info.model << 16);
+  #endif
+  // mix in ADC calibration data:
+  esp_adc_cal_characteristics_t ch;
+  #if SOC_ADC_MAX_BITWIDTH == 13 // S2 has 13 bit ADC
+  constexpr auto myBIT_WIDTH = ADC_WIDTH_BIT_13;
+  #else
+  constexpr auto myBIT_WIDTH = ADC_WIDTH_BIT_12;
+  #endif
+  esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN_DB_11, myBIT_WIDTH, 1100, &ch);
+  fp[0] ^= ch.coeff_a;
+  fp[1] ^= ch.coeff_b;
+  if (ch.low_curve) {
+    for (int i = 0; i < 8; i++) {
+      fp[0] ^= ch.low_curve[i];
+    }
+  }
+  if (ch.high_curve) {
+    for (int i = 0; i < 8; i++) {
+      fp[1] ^= ch.high_curve[i];
+    }
+  }
+  char fp_string[17];  // 16 hex chars + null terminator
+  sprintf(fp_string, "%08X%08X", fp[1], fp[0]);
+  return String(fp_string);
+}
+#else // ESP8266
+String generateDeviceFingerprint() {
+  uint32_t fp[2] = {0, 0}; // create 64 bit fingerprint
+  WiFi.macAddress((uint8_t*)&fp); // use MAC address as fingerprint base
+  fp[0] ^= ESP.getFlashChipId();
+  fp[1] ^= ESP.getFlashChipSize() | ESP.getFlashChipVendorId() << 16;
+  char fp_string[17];  // 16 hex chars + null terminator
+  sprintf(fp_string, "%08X%08X", fp[1], fp[0]);
+  return String(fp_string);
+}
+#endif
+
+// Generate a device ID based on SHA1 hash of MAC address salted with other unique device info
+// Returns: original SHA1 + last 2 chars of double-hashed SHA1 (42 chars total)
+String getDeviceId() {
+  static String cachedDeviceId = "";
+  if (cachedDeviceId.length() > 0) return cachedDeviceId;
+  // The device string is deterministic as it needs to be consistent for the same device, even after a full flash erase
+  // MAC is salted with other consistent device info to avoid rainbow table attacks.
+  // If the MAC address is known by malicious actors, they could precompute SHA1 hashes to impersonate devices,
+  // but as WLED developers are just looking at statistics and not authenticating devices, this is acceptable.
+  // If the usage data was exfiltrated, you could not easily determine the MAC from the device ID without brute forcing SHA1
+
+  String firstHash = computeSHA1(generateDeviceFingerprint());
+
+  // Second hash: SHA1 of the first hash
+  String secondHash = computeSHA1(firstHash);
+
+  // Concatenate first hash + last 2 chars of second hash
+  cachedDeviceId = firstHash + secondHash.substring(38);
+
+  return cachedDeviceId;
 }
