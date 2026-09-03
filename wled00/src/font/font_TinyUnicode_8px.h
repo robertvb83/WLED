@@ -148,5 +148,6 @@ static const unsigned char font_TinyUnicode_8px[] PROGMEM = {
     0x69, 0x44, 0x98,                             /* code=123, hex=0x7B, ascii="{", w=3 */
     0x7C,                                         /* code=124, hex=0x7C, ascii="|", w=1 */
     0xC9, 0x14, 0xB0,                             /* code=125, hex=0x7D, ascii="}", w=3 */
-    0x00, 0x13, 0x59, 0x00, 0x00                  /* code=126, hex=0x7E, ascii="~", w=5 */
+    // 0x00, 0x13, 0x59, 0x00, 0x00                  /* code=126, hex=0x7E, ascii="~", w=5 */
+    0x74, 0x62, 0xE0, 0x00, 0x00                  /* code=126, hex=0x7E, ascii="°", w=5 */
 };
