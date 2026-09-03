@@ -724,7 +724,7 @@ function populateInfo(i)
 	var vcn = "Kuuhaku";
 	if (i.cn) vcn = i.cn;
 
-	cn += `v${i.ver} "${vcn}"<br><br><table>
+	cn += `v${i.ver} <i>"${vcn}"</i>${i.release ? '<br>('+i.release+')' : ''}<br><br><table>
 ${urows}
 ${urows===""?'':'<tr><td colspan=2><hr style="height:1px;border-width:0;color:gray;background-color:gray"></td></tr>'}
 ${i.opt&0x100?inforow("Debug","<button class=\"btn btn-xs\" onclick=\"requestJson({'debug':"+(i.opt&0x0080?"false":"true")+"});\"><i class=\"icons "+(i.opt&0x0080?"on":"off")+"\">&#xe08f;</i></button>"):''}
@@ -734,13 +734,17 @@ ${inforow("Uptime",getRuntimeStr(i.uptime))}
 ${inforow("Time",i.time)}
 ${inforow("Free heap",(i.freeheap/1024).toFixed(1)," kB")}
 ${i.psram?inforow("Free PSRAM",(i.psram/1024).toFixed(1)," kB"):""}
+<tr><td colspan=2><hr class="sml"></td></tr>
+${i.leds.count?inforow("Total LEDs",i.leds.count):""}
 ${inforow("Estimated current",pwru)}
 ${inforow("Average FPS",i.leds.fps)}
+<tr><td colspan=2><hr class="sml"></td></tr>
 ${inforow("MAC address",i.mac)}
 ${inforow("CPU clock",i.clock," MHz")}
 ${inforow("Flash size",i.flash," MB")}
 ${inforow("Filesystem",i.fs.u + "/" + i.fs.t + " kB (" +Math.round(i.fs.u*100/i.fs.t) + "%)")}
-${inforow("Environment",i.arch + " " + i.core + " (" + i.lwip + ")")}
+${inforow("Environment",i.arch + " " + i.core + ( i.lwip ? " (" + i.lwip + ")" : ""))}
+${i.repo?inforow("GitHub","<a href=\"https://github.com/"+i.repo+"\" target=\"_blank\" rel=\"noopener noreferrer\">" + i.repo + "</a>"):""}
 </table>`;
 	gId('kv').innerHTML = cn;
 	//  update all sliders in Info
@@ -3287,8 +3291,14 @@ function checkVersionUpgrade(info) {
 			const storedVersion = versionInfo.version || '';
 
 			if (storedVersion && storedVersion !== currentVersion) {
-				// Version has changed, show upgrade prompt
-				showVersionUpgradePrompt(info, storedVersion, currentVersion);
+				// Version has changed
+				if (versionInfo.alwaysReport) {
+					// Automatically report if user opted in for always reporting
+					reportUpgradeEvent(info, storedVersion, true);
+				} else {
+					// Show upgrade prompt
+					showVersionUpgradePrompt(info, storedVersion, currentVersion);
+				}
 			} else if (!storedVersion) {
 				// Empty version in file, show install prompt
 				showVersionUpgradePrompt(info, null, currentVersion);
@@ -3296,6 +3306,10 @@ function checkVersionUpgrade(info) {
 		})
 		.catch(e => {
 			console.log('Failed to load version-info.json', e);
+			// On error, save current version for next time
+			if (info && info.ver) {
+				updateVersionInfo(info.ver, false, false);
+			}
 		});
 }
 
@@ -3320,7 +3334,7 @@ function showVersionUpgradePrompt(info, oldVersion, newVersion) {
 		? `You are now running WLED <strong style="text-wrap: nowrap">${newVersion}</strong>.`
 		: `Your WLED has been upgraded from <strong style="text-wrap: nowrap">${oldVersion}</strong> to <strong style="text-wrap: nowrap">${newVersion}</strong>.`;
 
-	const question = 'Help make WLED better with a one-time hardware report? It includes only device details like chip type, LED count, etc. — never personal data or your activities.'
+	const question = 'Help make WLED better by sharing hardware details like chip type and LED count? This helps us understand how WLED is used and prioritize features — we never collect personal data or your activities.'
 
 	dialog.innerHTML = `
 		<h2 style="margin-top:0;color:var(--c-f);">${title}</h2>
@@ -3329,10 +3343,15 @@ function showVersionUpgradePrompt(info, oldVersion, newVersion) {
 		<p style="color:var(--c-f);font-size:0.9em;">
 			<a href="https://kno.wled.ge/about/privacy-policy/" target="_blank" style="color:var(--c-6);">Learn more about what data is collected and why</a>
 		</p>
-		<div style="margin-top:20px;">
-			<button id="versionReportYes" class="btn">Yes</button>
-			<button id="versionReportNo" class="btn">Not Now</button>
-			<button id="versionReportNever" class="btn">Never Ask</button>
+		<div style="margin-top:15px;margin-bottom:15px;">
+			<label style="display:flex;align-items:center;gap:8px;color:var(--c-f);cursor:pointer;">
+				<input type="checkbox" id="versionSaveChoice" style="cursor:pointer;">
+				<span>Save my choice for future updates</span>
+			</label>
+		</div>
+		<div style="margin-top:20px;display:flex;flex-wrap:wrap;gap:8px;">
+			<button id="versionReportYes" class="btn">Report update</button>
+			<button id="versionReportNo" class="btn">Skip reporting</button>
 		</div>
 	`;
 
@@ -3341,31 +3360,45 @@ function showVersionUpgradePrompt(info, oldVersion, newVersion) {
 
 	// Add event listeners
 	gId('versionReportYes').addEventListener('click', () => {
-		reportUpgradeEvent(info, oldVersion);
+		const saveChoice = gId('versionSaveChoice').checked;
 		d.body.removeChild(overlay);
+		// Pass saveChoice as alwaysReport parameter
+		reportUpgradeEvent(info, oldVersion, saveChoice);
 	});
 
 	gId('versionReportNo').addEventListener('click', () => {
-		// Don't update version, will ask again on next load
+		const saveChoice = gId('versionSaveChoice').checked;
 		d.body.removeChild(overlay);
-	});
-
-	gId('versionReportNever').addEventListener('click', () => {
-		updateVersionInfo(newVersion, true);
-		d.body.removeChild(overlay);
-		showToast('You will not be asked again.');
+		if (saveChoice) {
+			// Save "never ask" preference
+			updateVersionInfo(newVersion, true, false);
+			showToast('You will not be asked again.');
+		} else {
+			// Save current version to prevent re-prompting until version changes
+			updateVersionInfo(newVersion, false, false);
+		}
 	});
 }
 
-function reportUpgradeEvent(info, oldVersion) {
+function reportUpgradeEvent(info, oldVersion, alwaysReport) {
 	showToast('Reporting upgrade...');
+	const IR_TYPES = {
+		0: null,           // not configured — omit field entirely
+		1: "24-key",       // white 24-key remote
+		2: "24-key-ct",    // white 24-key with CW, WW, CT+, CT- keys
+		3: "40-key",       // blue 40-key remote
+		4: "44-key",       // white 44-key remote
+		5: "21-key",       // white 21-key remote
+		6: "6-key",        // black 6-key learning remote
+		7: "9-key",        // 9-key remote
+		8: "json-remote",  // ir.json configurable remote
+	};
 
-	// Fetch fresh data from /json/info endpoint as requested
-	fetch(getURL('/json/info'), {
-		method: 'get'
-	})
-		.then(res => res.json())
-		.then(infoData => {
+	// Reuse the info argument and fetch only /json/cfg (serialize requests to avoid 503s on low-heap devices)
+	const infoData = info;
+	fetch(getURL('/json/cfg'), {method: 'get'})
+		.then(res => res.ok ? res.json() : Promise.reject(new Error('Failed to fetch /json/cfg')))
+		.then(cfgData => {
 			// Map to UpgradeEventRequest structure per OpenAPI spec
 			// Required fields: deviceId, version, previousVersion, releaseName, chip, ledCount, isMatrix, bootloaderSHA256
 			const upgradeData = {
@@ -3379,12 +3412,59 @@ function reportUpgradeEvent(info, oldVersion) {
 				bootloaderSHA256: infoData.bootloaderSHA256 || '',   // Bootloader SHA256 hash
 				brand: infoData.brand,                           // Device brand (always present)
 				product: infoData.product,                       // Product name (always present)
-				flashSize: infoData.flash                        // Flash size (always present)
-			};
+				flashSize: infoData.flash,                       // Flash size (always present)
+				repo: infoData.repo,                             // GitHub repository (always present)
+				fsUsed: infoData.fs?.u,                          // Filesystem used space in kB
+				fsTotal: infoData.fs?.t,                         // Filesystem total space in kB
+
+				// LED hardware
+				busCount:      cfgData.hw?.led?.ins?.length ?? 1,
+				busTypes:      (cfgData.hw?.led?.ins ?? []).map(b => busTypeToString(b.type)),
+				matrixWidth:   infoData.leds?.matrix?.w,
+				matrixHeight:  infoData.leds?.matrix?.h,
+				ledFeatures: [
+					...(infoData.leds?.lc & 0x02               ? ["rgbw"] : []),
+					...(infoData.leds?.lc & 0x04               ? ["cct"] : []),
+					...((infoData.leds?.maxpwr ?? 0) > 0       ? ["abl"] : []),
+					...(cfgData.hw?.led?.cr                    ? ["cct-from-rgb"] : []),
+					...(cfgData.hw?.led?.cct                   ? ["white-balance"] : []),
+					...((cfgData.light?.gc?.col ?? 1.0) > 1.0 || (cfgData.light?.gc?.bri ?? 1.0) > 1.0 ? ["gamma"] : []),
+					...(cfgData.light?.aseg                    ? ["auto-segments"] : []),
+					...((cfgData.light?.nl?.mode ?? 0) > 0     ? ["nightlight"] : []),
+				],
+
+				// peripherals (note: i2c/spi may reflect board defaults, not user-configured hardware)
+				peripherals: [
+					...((cfgData.hw?.relay?.pin ?? -1) >= 0                          ? ["relay"] : []),
+					...((cfgData.hw?.btn?.ins ?? []).filter(b => b.type !== 0).length > 0 ? ["buttons"] : []),
+					...((cfgData.eth?.type ?? 0) > 0                                 ? ["ethernet"] : []),
+					...((cfgData.if?.live?.dmx?.inputRxPin ?? 0) > 0                 ? ["dmx-input"] : []),
+					...((cfgData.hw?.ir?.type ?? 0) > 0                              ? ["ir-remote"] : []),
+				],
+				buttonCount: (cfgData.hw?.btn?.ins ?? []).filter(b => b.type !== 0).length,
+
+				// integrations
+				integrations: [
+					...(cfgData.if?.hue?.en                    ? ["hue"] : []),
+					...(cfgData.if?.mqtt?.en                   ? ["mqtt"] : []),
+					...(cfgData.if?.va?.alexa                  ? ["alexa"] : []),
+					...(cfgData.if?.sync?.send?.en             ? ["wled-sync"] : []),
+					...(cfgData.nw?.espnow                     ? ["esp-now"] : []),
+					...(cfgData.if?.sync?.espnow               ? ["esp-now-sync"] : []),
+				],
+
+				// usermods
+				usermods:    Object.keys(cfgData.um ?? {}),
+				usermodIds:  infoData.um ?? [],
+			  };
+
+			// IR remote — only include if configured
+			const irType = IR_TYPES[cfgData.hw?.ir?.type ?? 0];
+			if (irType) upgradeData.irRemoteType = irType;
 
 			// Add optional fields if available
-			if (infoData.psram !== undefined) upgradeData.psramSize = Math.round(infoData.psram / (1024 * 1024));  // convert bytes to MB
-			// Note: partitionSizes not currently available in /json/info endpoint
+			if (infoData.psrSz !== undefined) upgradeData.psramSize = infoData.psrSz;  // Total PSRAM size in MB; can be 0
+
 
 			// Make AJAX call to postUpgradeEvent API
 			return fetch('https://usage.wled.me/api/usage/upgrade', {
@@ -3397,8 +3477,12 @@ function reportUpgradeEvent(info, oldVersion) {
 		})
 		.then(res => {
 			if (res.ok) {
-				showToast('Thank you for reporting!');
-				updateVersionInfo(info.ver, false);
+				if (alwaysReport) {
+					showToast('Thank you! Future upgrades will be reported automatically.');
+				} else {
+					showToast('Thank you for reporting!');
+				}
+				updateVersionInfo(info.ver, false, !!alwaysReport);
 			} else {
 				showToast('Report failed. Please try again later.', true);
 				// Do NOT update version info on failure - user will be prompted again
@@ -3406,15 +3490,27 @@ function reportUpgradeEvent(info, oldVersion) {
 		})
 		.catch(e => {
 			console.log('Failed to report upgrade', e);
-			showToast('Report failed. Please try again later.', true);
-			// Do NOT update version info on error - user will be prompted again
+			showToast('Report failed', true);
+			updateVersionInfo(info.ver, false, !!alwaysReport);
 		});
 }
 
-function updateVersionInfo(version, neverAsk) {
+function busTypeToString(t) {
+	if (t === 0)                       return "none";
+	if (t === 40)                      return "on-off";
+	if (t >= 16 && t <= 39)            return "digital";      // WS2812, SK6812, etc.
+	if (t >= 41 && t <= 47)            return "pwm";          // analog RGB/CCT/single
+	if (t >= 48 && t <= 63)            return "digital-spi";  // APA102, WS2801, etc.
+	if (t >= 64 && t <= 71)            return "hub75";        // HUB75 matrix panels
+	if (t >= 80 && t <= 95)            return "network";      // DDP, E1.31, ArtNet
+	return "unknown";
+}
+
+function updateVersionInfo(version, neverAsk, alwaysReport) {
 	const versionInfo = {
 		version: version,
-		neverAsk: neverAsk
+		neverAsk: neverAsk,
+		alwaysReport: !!alwaysReport
 	};
 
 	// Create a Blob with JSON content and use /upload endpoint

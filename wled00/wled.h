@@ -7,7 +7,7 @@
  */
 
 // version code in format yymmddb (b = daily build)
-#define VERSION 2508020
+#define VERSION 2606151
 
 //uncomment this if you have a "my_config.h" file you'd like to use
 //#define WLED_USE_MY_CONFIG
@@ -142,6 +142,10 @@
  #else //ESP32
   #include "src/dependencies/dmx/SparkFunDMX.h"
  #endif
+#endif
+
+#ifdef WLED_ENABLE_DMX_INPUT
+  #include "dmx_input.h"
 #endif
 
 #include "src/dependencies/e131/ESPAsyncE131.h"
@@ -453,7 +457,15 @@ WLED_GLOBAL bool arlsForceMaxBri _INIT(false);                    // enable to f
   WLED_GLOBAL uint16_t DMXStart _INIT(10);        // start address of the first fixture
   WLED_GLOBAL uint16_t DMXStartLED _INIT(0);      // LED from which DMX fixtures start
 #endif
-WLED_GLOBAL uint16_t e131Universe _INIT(1);                       // settings for E1.31 (sACN) protocol (only DMX_MODE_MULTIPLE_* can span over consecutive universes)
+#ifdef WLED_ENABLE_DMX_INPUT
+  WLED_GLOBAL int dmxInputTransmitPin _INIT(0);
+  WLED_GLOBAL int dmxInputReceivePin _INIT(0);
+  WLED_GLOBAL int dmxInputEnablePin _INIT(0);
+  WLED_GLOBAL int dmxInputPort _INIT(2);
+  WLED_GLOBAL DMXInput dmxInput;
+#endif
+
+WLED_GLOBAL uint16_t e131Universe _INIT(1);                       // settings for E1.31 (sACN) protocol (only DMX_MODE_MULTIPLE_* can span over consequtive universes)
 WLED_GLOBAL uint16_t e131Port _INIT(5568);                        // DMX in port. E1.31 default is 5568, Art-Net is 6454
 WLED_GLOBAL byte e131Priority _INIT(0);                           // E1.31 port priority (if != 0 priority handling is active)
 WLED_GLOBAL E131Priority highPriority _INIT(3);                   // E1.31 highest priority tracking, init = timeout in seconds
@@ -725,7 +737,7 @@ typedef class Udp {
       RgbConnected = c3;
     }
 } __attribute__ ((aligned(1), packed)) udp_port_t;
-WLED_GLOBAL udp_port_t udp _INIT_N(({21234, 65506, 19446, 0, false, false, false}));
+WLED_GLOBAL udp_port_t udp _INIT_N(({21324, 65506, 19446, 0, false, false, false}));
 #define udpPort         udp.Port
 #define udpPort2        udp.Port2
 #define udpRgbPort      udp.RgbPort
