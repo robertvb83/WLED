@@ -23,7 +23,7 @@ void InfoProvider::setup()
     }
     um_data->u_type[0] = UMT_BYTE_ARR;
     um_data->u_data[0] = &infoData;
-    renderConfig01();
+    renderConfigs();
 }
 
 void InfoProvider::loop()
@@ -50,11 +50,14 @@ void InfoProvider::copyToBuffer(char *destination, size_t capacity, const String
     destination[length] = '\0';
 }
 
-void InfoProvider::renderConfig01()
+void InfoProvider::renderConfigs()
 {
-    copyToBuffer(infoData.text[0], sizeof(infoData.text[0]), config01);
-    infoData.valid[0] = enabled && config01.length() > 0;
-    infoData.color[0] = 0;
+    for (uint8_t index = 0; index < 8; index++)
+    {
+        copyToBuffer(infoData.text[index], sizeof(infoData.text[index]), configs[index]);
+        infoData.valid[index] = enabled && configs[index].length() > 0;
+        infoData.color[index] = 0;
+    }
 }
 
 bool InfoProvider::readFromConfig(JsonObject &root)
@@ -62,10 +65,17 @@ bool InfoProvider::readFromConfig(JsonObject &root)
     JsonObject top = root[FPSTR(_name)];
     bool complete = !top.isNull();
     enabled = top[FPSTR(_enabled)] | enabled;
-    config01 = top["config01"] | config01;
-    if (config01.length() > WLED_MAX_SEGNAME_LEN)
-        config01.remove(WLED_MAX_SEGNAME_LEN);
-    renderConfig01();
+    for (uint8_t index = 0; index < 8; index++)
+    {
+        char key[9];
+        snprintf(key, sizeof(key), "config%02u", index + 1);
+        if (top[key].isNull())
+            complete = false;
+        configs[index] = top[key] | configs[index];
+        if (configs[index].length() > WLED_MAX_SEGNAME_LEN)
+            configs[index].remove(WLED_MAX_SEGNAME_LEN);
+    }
+    renderConfigs();
     return complete;
 }
 
@@ -73,5 +83,10 @@ void InfoProvider::addToConfig(JsonObject &root)
 {
     JsonObject top = root.createNestedObject(FPSTR(_name));
     top[FPSTR(_enabled)] = enabled;
-    top["config01"] = config01;
+    for (uint8_t index = 0; index < 8; index++)
+    {
+        char key[9];
+        snprintf(key, sizeof(key), "config%02u", index + 1);
+        top[key] = configs[index];
+    }
 }

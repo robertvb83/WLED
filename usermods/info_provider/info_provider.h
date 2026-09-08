@@ -9,10 +9,11 @@ private:
     static const char _enabled[];
 
     bool enabled = true;
-    String config01 = "Test text";
+    String configs[8] = {
+        "Test text", "", "", "", "", "", "", ""};
     scroll_info_data_t infoData{};
 
-    void renderConfig01();
+    void renderConfigs();
     static void copyToBuffer(char *destination, size_t capacity, const String &value);
 
 public:
