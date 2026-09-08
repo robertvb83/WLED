@@ -41,7 +41,7 @@ void InfoProvider::loop()
 void InfoProvider::appendConfigData()
 {
     char script[192];
-    oappend(F("addInfo('InfoProvider:config01',0,'','Available templates: [temp] [maxTemp] [weather] [termin] [counter] [birthdayName] [birthdayFull]');"));
+    oappend(F("addInfo('InfoProvider:Enable',0,'<br>Available templates: [temp] [maxTemp] [weather] [termin] [counter] [birthdayName] [birthdayFull]');"));
     for (uint8_t index = 0; index < 8; index++)
     {
         snprintf(script, sizeof(script),
