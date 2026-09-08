@@ -1,0 +1,5 @@
+# InfoProvider birthday defaults
+# Format: DD.MM|Name
+08.09|Test Birthday
+11.12|Robert
+26.10|Theano

@@ -23,23 +23,76 @@ void InfoProvider::setup()
     }
     um_data->u_type[0] = UMT_BYTE_ARR;
     um_data->u_data[0] = &infoData;
+    updateBirthday();
     renderConfigs();
 }
 
 void InfoProvider::loop()
 {
-    // Reserved for future live data updates.
+    if (!enabled || millis() - lastUpdate < 1000)
+        return;
+
+    lastUpdate = millis();
+    testCounter++;
+    updateBirthday();
+    renderConfigs();
 }
 
 void InfoProvider::appendConfigData()
 {
-    char script[96];
+    char script[192];
+    oappend(F("addInfo('InfoProvider:config01',0,'','Available templates: [temp] [maxTemp] [weather] [termin] [counter] [birthdayName] [birthdayFull]');"));
     for (uint8_t index = 0; index < 8; index++)
     {
         snprintf(script, sizeof(script),
-                 "addInfo('InfoProvider:config%02u',1,'','Text for #INFO%02u');",
+                 "addInfo('InfoProvider:config%02u',1,'','Use #INFO%02u');",
                  index + 1, index + 1);
         oappend(script);
+    }
+}
+
+String InfoProvider::renderTemplate(const String &source) const
+{
+    String rendered = source;
+    rendered.replace("[counter]", String(testCounter));
+    rendered.replace("[temp]", currentTemperature);
+    rendered.replace("[maxTemp]", dailyHighTemperature);
+    rendered.replace("[weather]", weather);
+    rendered.replace("[max]", dailyHighTemperature);
+    rendered.replace("[wetter]", weather);
+    rendered.replace("[termin]", nextCalendarEvent);
+    if (birthdayName.length() == 0)
+        rendered.replace(" [birthdayName]", "");
+    rendered.replace("[birthdayName]", birthdayName);
+    rendered.replace("[birthdayFull]", birthdayFull);
+    rendered.replace("[test counter]", String(testCounter));
+    rendered.replace("[current temperature]", currentTemperature);
+    rendered.replace("[daily high temperature]", dailyHighTemperature);
+    rendered.replace("[weather]", weather);
+    rendered.replace("[next calendar event]", nextCalendarEvent);
+    return rendered;
+}
+
+void InfoProvider::updateBirthday()
+{
+    birthdayName = "";
+    for (uint8_t index = 0; index < INFO_PROVIDER_BIRTHDAY_DEFAULT_COUNT; index++)
+    {
+        const InfoProviderBirthdayDefault &entry = INFO_PROVIDER_BIRTHDAY_DEFAULTS[index];
+        if (entry.day == day(localTime) && entry.month == month(localTime))
+        {
+            birthdayName = entry.name;
+            break;
+        }
+    }
+
+    char date[8];
+    snprintf(date, sizeof(date), "%02u.%02u.", day(localTime), month(localTime));
+    birthdayFull = date;
+    if (birthdayName.length() > 0)
+    {
+        birthdayFull += ' ';
+        birthdayFull += birthdayName;
     }
 }
 
@@ -66,8 +119,9 @@ void InfoProvider::renderConfigs()
 {
     for (uint8_t index = 0; index < 8; index++)
     {
-        copyToBuffer(infoData.text[index], sizeof(infoData.text[index]), configs[index]);
-        infoData.valid[index] = enabled && configs[index].length() > 0;
+        String rendered = renderTemplate(configs[index]);
+        copyToBuffer(infoData.text[index], sizeof(infoData.text[index]), rendered);
+        infoData.valid[index] = enabled && rendered.length() > 0;
         infoData.color[index] = 0;
     }
 }

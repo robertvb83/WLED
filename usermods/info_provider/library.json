@@ -1,4 +1,6 @@
 {
   "name": "info_provider",
-  "build": { "libArchive": false }
+  "build": {
+    "libArchive": false
+  }
 }
