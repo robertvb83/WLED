@@ -35,14 +35,36 @@ void InfoProvider::loop()
 
     lastUpdate = millis();
     testCounter++;
+    if (weatherFetchRequested || (openWeatherApiKey.length() > 0 && location.length() > 0 && (lastWeatherUpdate == 0 || millis() - lastWeatherUpdate >= (uint32_t)weatherUpdateMinutes * 60000U)))
+    {
+        weatherFetchRequested = false;
+        if (latitude == 0.0f && longitude == 0.0f)
+            updateLocation();
+        if (latitude != 0.0f || longitude != 0.0f)
+            updateWeather();
+        lastWeatherUpdate = millis();
+    }
     updateBirthday();
     renderConfigs();
+}
+
+void InfoProvider::connected()
+{
+    lastWeatherUpdate = 0;
+    weatherFetchRequested = true;
 }
 
 void InfoProvider::appendConfigData()
 {
     char script[192];
-    oappend(F("addInfo('InfoProvider:Enable',1,'<br>Available templates: [temp] [maxTemp] [weather] [termin] [counter] [birthdayName] [birthdayFull] [birthdayFull0]');"));
+    oappend(F("addInfo('InfoProvider:Enable',1,'<br>Available templates: [temp] [maxTemp] [maxTempPart] [weather] [termin] [counter] [birthdayName] [birthdayFull] [birthdayFull0]');"));
+    oappend(F("addInfo('InfoProvider:location',1,'city or area');"));
+    oappend(F("addInfo('InfoProvider:country',1,'ISO 3166 code');"));
+    oappend(F("addInfo('InfoProvider:weatherUpdateMinutes',1,'minutes');"));
+    oappend(F("addInfo('InfoProvider:openWeatherApiKey',1,'OpenWeather API key');"));
+    oappend(F("addInfo('InfoProvider:openWeatherApiKey',1,'','<button type=\"button\" onclick=\"fetch(&quot;/json/state&quot;,{method:&quot;POST&quot;,headers:{&quot;Content-Type&quot;:&quot;application/json&quot;},body:&quot;{\\&quot;InfoProvider\\&quot;:{\\&quot;fetch\\&quot;:true}}&quot;}).then(()=>setTimeout(()=>location.reload(),1500))\">Fetch weather</button>');"));
+    oappend(F("addInfo('InfoProvider:weatherDebug',1,'','Debug values');"));
+    oappend(F("document.getElementsByName('InfoProvider:weatherDebug')[0].readOnly=true;"));
     for (uint8_t index = 0; index < 8; index++)
     {
         snprintf(script, sizeof(script),
@@ -60,11 +82,227 @@ void InfoProvider::appendConfigData()
     }
 }
 
+bool InfoProvider::updateLocation()
+{
+    if (!WLED_CONNECTED || location.length() == 0 || country.length() == 0 || openWeatherApiKey.length() == 0)
+        return false;
+
+    String url = F("http://api.openweathermap.org/geo/1.0/direct?q=");
+    url += location;
+    url += ',';
+    url += country;
+    url += F("&limit=1&appid=");
+    url += openWeatherApiKey;
+
+    WiFiClient client;
+    HTTPClient http;
+    if (!http.begin(client, url))
+    {
+        weatherDebug = F("Geocoding HTTP begin failed");
+        return false;
+    }
+    http.setTimeout(5000);
+    const int status = http.GET();
+    bool success = false;
+    String response;
+    if (status == HTTP_CODE_OK)
+    {
+        response = http.getString();
+        DynamicJsonDocument document(1024);
+        DeserializationError error = deserializeJson(document, response);
+        if (!error && document.is<JsonArray>() && document[0])
+        {
+            latitude = document[0]["lat"] | 0.0f;
+            longitude = document[0]["lon"] | 0.0f;
+            success = latitude != 0.0f || longitude != 0.0f;
+        }
+    }
+    http.end();
+    weatherDebug = success ? F("Geocoded: ") : F("Geocoding HTTP ");
+    if (!success)
+    {
+        weatherDebug += status;
+        if (response.length() > 0 && response.length() < 160)
+        {
+            weatherDebug += ' ';
+            weatherDebug += response;
+        }
+    }
+    if (success)
+    {
+        weatherDebug += String(latitude, 5);
+        weatherDebug += ',';
+        weatherDebug += String(longitude, 5);
+    }
+    return success;
+}
+
+bool InfoProvider::updateWeather()
+{
+    if (!WLED_CONNECTED || (latitude == 0.0f && longitude == 0.0f) || openWeatherApiKey.length() == 0)
+        return false;
+
+    WiFiClient client;
+    HTTPClient http;
+    String locationQuery = location;
+    locationQuery += ',';
+    locationQuery += country;
+    String baseUrl = F("http://api.openweathermap.org/data/2.5/");
+    String currentUrl = baseUrl + F("weather?q=") + locationQuery + F("&units=metric&appid=") + openWeatherApiKey;
+    String forecastUrl = baseUrl + F("forecast?q=") + locationQuery + F("&units=metric&appid=") + openWeatherApiKey;
+
+    String currentResponse;
+    String forecastResponse;
+    int currentStatus = -1;
+    int forecastStatus = -1;
+    if (http.begin(client, currentUrl))
+    {
+        http.setTimeout(5000);
+        currentStatus = http.GET();
+        if (currentStatus == HTTP_CODE_OK)
+            currentResponse = http.getString();
+        http.end();
+    }
+    if (http.begin(client, forecastUrl))
+    {
+        http.setTimeout(5000);
+        forecastStatus = http.GET();
+        if (forecastStatus == HTTP_CODE_OK)
+            forecastResponse = http.getString();
+        http.end();
+    }
+
+    bool success = false;
+    bool currentParsed = false;
+    bool forecastParsed = false;
+    String currentErrorText;
+    String forecastErrorText;
+    DynamicJsonDocument currentDocument(4096);
+    DynamicJsonDocument forecastDocument(16384);
+
+    if (currentStatus == HTTP_CODE_OK && currentResponse.length() <= 8192)
+    {
+        DeserializationError error = deserializeJson(currentDocument, currentResponse);
+        if (!error)
+            currentParsed = true;
+        else
+            currentErrorText = error.c_str();
+    }
+    else
+        currentErrorText = F("HTTP status or response too large");
+
+    if (forecastStatus == HTTP_CODE_OK && forecastResponse.length() <= 20000)
+    {
+        DeserializationError error = deserializeJson(forecastDocument, forecastResponse);
+        if (!error)
+            forecastParsed = true;
+        else
+            forecastErrorText = error.c_str();
+    }
+    else
+        forecastErrorText = F("HTTP status or response too large");
+
+    bool currentTemperatureValid = false;
+    float currentTemperatureValue = 0.0f;
+    if (currentParsed)
+    {
+        JsonObject current = currentDocument.as<JsonObject>();
+        if (!current["main"]["temp"].isNull())
+        {
+            currentTemperatureValue = current["main"]["temp"].as<float>();
+            currentTemperature = String(currentTemperatureValue, 1);
+            currentTemperatureValid = true;
+        }
+        const char *description = current["weather"][0]["description"] | "";
+        if (description[0] != '\0')
+            weather = description;
+        dailyHighTemperature = currentTemperatureValid ? currentTemperature : "";
+        if (forecastParsed)
+        {
+            const int64_t timezoneOffset = current["timezone"] | 0;
+            const int64_t currentDay = ((current["dt"] | 0) + timezoneOffset) / 86400;
+            float maxTemperature = currentTemperatureValue;
+            for (JsonObject item : forecastDocument["list"].as<JsonArray>())
+            {
+                if ((((item["dt"] | 0) + timezoneOffset) / 86400) != currentDay)
+                    continue;
+                const float candidate = item["main"]["temp_max"] | -1000.0f;
+                if (candidate > maxTemperature)
+                    maxTemperature = candidate;
+            }
+            if (maxTemperature > -999.0f)
+                dailyHighTemperature = String(maxTemperature, 1);
+        }
+    }
+    success = currentTemperatureValid && weather.length() > 0;
+    if (!success)
+    {
+        weatherDebug = F("Weather current=");
+        weatherDebug += currentStatus;
+        weatherDebug += currentParsed ? F(" OK") : currentErrorText;
+        weatherDebug += F(" forecast=");
+        weatherDebug += forecastStatus;
+        weatherDebug += forecastParsed ? F(" OK") : forecastErrorText;
+    }
+    if (success)
+    {
+        weatherDebug = F("OK ");
+        weatherDebug += locationQuery;
+        weatherDebug += F(" temp=");
+        weatherDebug += currentTemperature;
+        weatherDebug += F(" max=");
+        weatherDebug += dailyHighTemperature;
+        weatherDebug += F(" weather=");
+        weatherDebug += weather;
+    }
+    if (success)
+    {
+        weatherDebug += String(latitude, 5);
+        weatherDebug += F(" lon=");
+        weatherDebug += String(longitude, 5);
+        weatherDebug += F(" temp=");
+        weatherDebug += currentTemperature;
+        weatherDebug += F(" max=");
+        weatherDebug += dailyHighTemperature;
+        weatherDebug += F(" weather=");
+        weatherDebug += weather;
+    }
+    return success;
+}
+
+void InfoProvider::fetchWeatherNow()
+{
+    latitude = 0.0f;
+    longitude = 0.0f;
+    if (updateLocation())
+        updateWeather();
+    lastWeatherUpdate = millis();
+}
+
+void InfoProvider::readFromJsonState(JsonObject &root)
+{
+    JsonObject top = root[FPSTR(_name)];
+    if (!top.isNull() && (top["fetch"] | false))
+        weatherFetchRequested = true;
+}
+
 String InfoProvider::renderTemplate(const String &source) const
 {
     String rendered = source;
     rendered.replace("[counter]", String(testCounter));
     rendered.replace("[temp]", currentTemperature);
+    String maxTemperaturePart;
+    if (dailyHighTemperature.length() > 0 && currentTemperature.toFloat() < dailyHighTemperature.toFloat())
+    {
+        maxTemperaturePart = ">";
+        maxTemperaturePart += dailyHighTemperature;
+    }
+    rendered.replace("[maxTempPart]", maxTemperaturePart);
+    if (dailyHighTemperature.length() == 0)
+    {
+        rendered.replace(" > [maxTemp]", "");
+        rendered.replace(">[maxTemp]", "");
+    }
     rendered.replace("[maxTemp]", dailyHighTemperature);
     rendered.replace("[weather]", weather);
     rendered.replace("[max]", dailyHighTemperature);
@@ -312,6 +550,17 @@ bool InfoProvider::readFromConfig(JsonObject &root)
     JsonObject top = root[FPSTR(_name)];
     bool complete = !top.isNull();
     enabled = top[FPSTR(_enabled)] | enabled;
+    location = top["location"] | location;
+    country = top["country"] | country;
+    latitude = 0.0f;
+    longitude = 0.0f;
+    openWeatherApiKey = top["openWeatherApiKey"] | openWeatherApiKey;
+    weatherUpdateMinutes = top["weatherUpdateMinutes"] | weatherUpdateMinutes;
+    weatherUpdateMinutes = constrain(weatherUpdateMinutes, (uint16_t)1, (uint16_t)1440);
+    lastWeatherUpdate = 0;
+    weatherFetchRequested = true;
+    if (top["location"].isNull() || top["country"].isNull() || top["openWeatherApiKey"].isNull() || top["weatherUpdateMinutes"].isNull())
+        complete = false;
     for (uint8_t index = 0; index < 8; index++)
     {
         char key[9];
@@ -341,6 +590,11 @@ void InfoProvider::addToConfig(JsonObject &root)
 {
     JsonObject top = root.createNestedObject(FPSTR(_name));
     top[FPSTR(_enabled)] = enabled;
+    top["location"] = location;
+    top["country"] = country;
+    top["openWeatherApiKey"] = openWeatherApiKey;
+    top["weatherUpdateMinutes"] = weatherUpdateMinutes;
+    top["weatherDebug"] = weatherDebug;
     for (uint8_t index = 0; index < 8; index++)
     {
         char key[9];
