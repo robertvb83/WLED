@@ -81,8 +81,9 @@ void InfoProvider::updateBirthday()
         const InfoProviderBirthdayDefault &entry = INFO_PROVIDER_BIRTHDAY_DEFAULTS[index];
         if (entry.day == day(localTime) && entry.month == month(localTime))
         {
-            birthdayName = entry.name;
-            break;
+            if (birthdayName.length() > 0)
+                birthdayName += F(" & ");
+            birthdayName += entry.name;
         }
     }
 

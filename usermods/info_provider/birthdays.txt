@@ -1,5 +1,23 @@
 # InfoProvider birthday defaults
 # Format: DD.MM|Name
-08.09|Test Birthday
-11.12|Robert
+02.01|Tessi
+03.02|Achim
+07.02|Peppi
+28.02|Tilly
+03.03|Iro
+10.03|Ida
+31.03|Paul
+05.04|Papa
+11.06|Ennio
+19.06|Stefan
+24.06|Maila
+28.07|Kerstin
+03.08|Christoph
+06.09|Caroline
+12.09|Mari
+21.09|Franzi
+13.10|Malou
+20.10|Mama
 26.10|Theano
+06.12|Winnie
+11.12|Robert
