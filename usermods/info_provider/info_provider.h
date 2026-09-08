@@ -22,6 +22,7 @@ private:
     String nextCalendarEvent;
     String birthdayName;
     String birthdayFull;
+    String birthdayFullZero;
     String birthdays[BirthdaySlots];
     bool birthdayDefaultsLoaded = false;
 

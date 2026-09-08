@@ -42,7 +42,7 @@ void InfoProvider::loop()
 void InfoProvider::appendConfigData()
 {
     char script[192];
-    oappend(F("addInfo('InfoProvider:Enable',1,'<br>Available templates: [temp] [maxTemp] [weather] [termin] [counter] [birthdayName] [birthdayFull]');"));
+    oappend(F("addInfo('InfoProvider:Enable',1,'<br>Available templates: [temp] [maxTemp] [weather] [termin] [counter] [birthdayName] [birthdayFull] [birthdayFull0]');"));
     for (uint8_t index = 0; index < 8; index++)
     {
         snprintf(script, sizeof(script),
@@ -73,6 +73,7 @@ String InfoProvider::renderTemplate(const String &source) const
     if (birthdayName.length() == 0)
         rendered.replace(" [birthdayName]", "");
     rendered.replace("[birthdayName]", birthdayName);
+    rendered.replace("[birthdayFull0]", birthdayFullZero);
     rendered.replace("[birthdayFull]", birthdayFull);
     rendered.replace("[test counter]", String(testCounter));
     rendered.replace("[current temperature]", currentTemperature);
@@ -247,12 +248,17 @@ void InfoProvider::updateBirthday()
     }
 
     char date[8];
-    snprintf(date, sizeof(date), "%02u.%02u.", day(localTime), month(localTime));
+    char dateZero[8];
+    snprintf(date, sizeof(date), "%u.%u.", day(localTime), month(localTime));
+    snprintf(dateZero, sizeof(dateZero), "%02u.%02u.", day(localTime), month(localTime));
     birthdayFull = date;
+    birthdayFullZero = dateZero;
     if (birthdayName.length() > 0)
     {
         birthdayFull += ' ';
         birthdayFull += birthdayName;
+        birthdayFullZero += ' ';
+        birthdayFullZero += birthdayName;
     }
 }
 
