@@ -19,6 +19,7 @@ private:
 public:
     void setup() override;
     void loop() override;
+    void appendConfigData() override;
     bool getUMData(um_data_t **data) override;
     bool readFromConfig(JsonObject &root) override;
     void addToConfig(JsonObject &root) override;

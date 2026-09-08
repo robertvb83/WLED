@@ -31,6 +31,18 @@ void InfoProvider::loop()
     // Reserved for future live data updates.
 }
 
+void InfoProvider::appendConfigData()
+{
+    char script[96];
+    for (uint8_t index = 0; index < 8; index++)
+    {
+        snprintf(script, sizeof(script),
+                 "addInfo('InfoProvider:config%02u',1,'','Text for #INFO%02u');",
+                 index + 1, index + 1);
+        oappend(script);
+    }
+}
+
 bool InfoProvider::getUMData(um_data_t **data)
 {
     if (!enabled || !um_data || !data)
