@@ -6,6 +6,7 @@
 class InfoProvider : public Usermod
 {
 private:
+    static constexpr uint8_t BirthdaySlots = 32;
     static const char _name[];
     static const char _enabled[];
 
@@ -21,9 +22,13 @@ private:
     String nextCalendarEvent;
     String birthdayName;
     String birthdayFull;
+    String birthdays[BirthdaySlots];
+    bool birthdayDefaultsLoaded = false;
 
     void renderConfigs();
+    void loadBirthdayDefaults();
     void updateBirthday();
+    String renderWledTokens(const String &source) const;
     String renderTemplate(const String &source) const;
     static void copyToBuffer(char *destination, size_t capacity, const String &value);
 
