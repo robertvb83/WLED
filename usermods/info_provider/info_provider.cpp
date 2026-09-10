@@ -154,7 +154,7 @@ bool InfoProvider::updateWeather()
     String currentErrorText;
     String forecastErrorText;
     DynamicJsonDocument currentDocument(4096);
-    DynamicJsonDocument forecastDocument(16384);
+    DynamicJsonDocument forecastDocument(32768);
 
     if (currentStatus == HTTP_CODE_OK && currentResponse.length() <= 8192)
     {
@@ -167,7 +167,7 @@ bool InfoProvider::updateWeather()
     else
         currentErrorText = F("HTTP status or response too large");
 
-    if (forecastStatus == HTTP_CODE_OK && forecastResponse.length() <= 20000)
+    if (forecastStatus == HTTP_CODE_OK && forecastResponse.length() <= 32768)
     {
         DeserializationError error = deserializeJson(forecastDocument, forecastResponse);
         if (!error)
@@ -198,16 +198,20 @@ bool InfoProvider::updateWeather()
             const int64_t timezoneOffset = current["timezone"] | 0;
             const int64_t currentDay = ((current["dt"] | 0) + timezoneOffset) / 86400;
             float maxTemperature = currentTemperatureValue;
+            uint8_t matchingForecasts = 0;
             for (JsonObject item : forecastDocument["list"].as<JsonArray>())
             {
                 if ((((item["dt"] | 0) + timezoneOffset) / 86400) != currentDay)
                     continue;
+                matchingForecasts++;
                 const float candidate = item["main"]["temp_max"] | -1000.0f;
                 if (candidate > maxTemperature)
                     maxTemperature = candidate;
             }
             if (maxTemperature > -999.0f)
                 dailyHighTemperature = roundTemperature ? String(roundf(maxTemperature), 0) : String(maxTemperature, 1);
+            weatherDebug = F("Forecast values=");
+            weatherDebug += matchingForecasts;
         }
     }
     success = currentTemperatureValid && weather.length() > 0;
@@ -230,6 +234,10 @@ bool InfoProvider::updateWeather()
         weatherDebug += dailyHighTemperature;
         weatherDebug += F(" weather=");
         weatherDebug += weather;
+        if (forecastParsed)
+        {
+            weatherDebug += F(" forecast used");
+        }
     }
     if (success)
     {
@@ -242,6 +250,13 @@ bool InfoProvider::updateWeather()
         weatherDebug += dailyHighTemperature;
         weatherDebug += F(" weather=");
         weatherDebug += weather;
+    }
+    if (localTime > 0)
+    {
+        char timestamp[24];
+        snprintf(timestamp, sizeof(timestamp), "%04d-%02d-%02d %02d:%02d:%02d",
+                 year(localTime), month(localTime), day(localTime), hour(localTime), minute(localTime), second(localTime));
+        lastWeatherFetch = timestamp;
     }
     return success;
 }
@@ -531,6 +546,7 @@ bool InfoProvider::readFromConfig(JsonObject &root)
     openWeatherApiKey = top["openWeatherApiKey"] | openWeatherApiKey;
     weatherUpdateMinutes = top["weatherUpdateMinutes"] | weatherUpdateMinutes;
     roundTemperature = top["roundTemperature"] | roundTemperature;
+    lastWeatherFetch = top["lastWeatherFetch"] | lastWeatherFetch;
     weatherUpdateMinutes = constrain(weatherUpdateMinutes, (uint16_t)1, (uint16_t)1440);
     lastWeatherUpdate = 0;
     weatherFetchRequested = true;
@@ -572,6 +588,7 @@ void InfoProvider::addToConfig(JsonObject &root)
     top["openWeatherApiKey"] = openWeatherApiKey;
     top["weatherUpdateMinutes"] = weatherUpdateMinutes;
     top["roundTemperature"] = roundTemperature;
+    top["lastWeatherFetch"] = lastWeatherFetch;
     for (uint8_t index = 0; index < 8; index++)
     {
         char key[9];

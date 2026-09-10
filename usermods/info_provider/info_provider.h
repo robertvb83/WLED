@@ -22,6 +22,7 @@ private:
     uint16_t weatherUpdateMinutes = 30;
     bool roundTemperature = false;
     String weatherDebug = "Not fetched";
+    String lastWeatherFetch = "Never";
     String configs[8] = {
         "Test text", "", "", "", "", "", "", ""};
     scroll_info_data_t infoData{};
