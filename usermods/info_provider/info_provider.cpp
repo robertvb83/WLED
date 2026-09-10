@@ -55,27 +55,7 @@ void InfoProvider::connected()
 
 void InfoProvider::appendConfigData()
 {
-    char script[192];
-    oappend(F("addInfo('InfoProvider:Enable',1,'<br>Available templates: [temp] [maxTemp] [maxTempPart] [weather] [termin] [birthdayName] [birthdayFull] [birthdayFull0]');"));
-    oappend(F("addInfo('InfoProvider:location',1,'city or area');"));
-    oappend(F("addInfo('InfoProvider:country',1,'ISO 3166 code');"));
-    oappend(F("addInfo('InfoProvider:weatherUpdateMinutes',1,'minutes<br><hr><b>Configs</b>');"));
-    oappend(F("addInfo('InfoProvider:openWeatherApiKey',1,'OpenWeather API key <button type=\"button\" onclick=\"fetch(&quot;/json/state&quot;,{method:&quot;POST&quot;,headers:{&quot;Content-Type&quot;:&quot;application/json&quot;},body:&quot;{\\&quot;InfoProvider\\&quot;:{\\&quot;fetch\\&quot;:true}}&quot;}).then(()=>setTimeout(()=>location.reload(),1500))\">Fetch weather</button>');"));
-    for (uint8_t index = 0; index < 8; index++)
-    {
-        snprintf(script, sizeof(script),
-                 "let f=document.getElementsByName('InfoProvider:config%02u')[0];if(f&&f.previousSibling)f.previousSibling.textContent='#Info%02u ';",
-                 index + 1, index + 1);
-        oappend(script);
-    }
-    oappend(F("addInfo('InfoProvider:config08',1,'<br><hr><b>Birthdays (DD.MM|Name)</b>','');"));
-    for (uint8_t index = 0; index < BirthdaySlots; index++)
-    {
-        snprintf(script, sizeof(script),
-                 "let f=document.getElementsByName('InfoProvider:BD%02u')[0];if(f&&f.previousSibling)f.previousSibling.textContent='BD%02u ';",
-                 index + 1, index + 1);
-        oappend(script);
-    }
+    // InfoProvider-specific labels are rendered directly by settings_um.htm.
 }
 
 bool InfoProvider::updateLocation()
@@ -206,7 +186,7 @@ bool InfoProvider::updateWeather()
         if (!current["main"]["temp"].isNull())
         {
             currentTemperatureValue = current["main"]["temp"].as<float>();
-            currentTemperature = String(currentTemperatureValue, 1);
+            currentTemperature = roundTemperature ? String(roundf(currentTemperatureValue), 0) : String(currentTemperatureValue, 1);
             currentTemperatureValid = true;
         }
         const char *description = current["weather"][0]["description"] | "";
@@ -227,7 +207,7 @@ bool InfoProvider::updateWeather()
                     maxTemperature = candidate;
             }
             if (maxTemperature > -999.0f)
-                dailyHighTemperature = String(maxTemperature, 1);
+                dailyHighTemperature = roundTemperature ? String(roundf(maxTemperature), 0) : String(maxTemperature, 1);
         }
     }
     success = currentTemperatureValid && weather.length() > 0;
@@ -550,10 +530,11 @@ bool InfoProvider::readFromConfig(JsonObject &root)
     longitude = 0.0f;
     openWeatherApiKey = top["openWeatherApiKey"] | openWeatherApiKey;
     weatherUpdateMinutes = top["weatherUpdateMinutes"] | weatherUpdateMinutes;
+    roundTemperature = top["roundTemperature"] | roundTemperature;
     weatherUpdateMinutes = constrain(weatherUpdateMinutes, (uint16_t)1, (uint16_t)1440);
     lastWeatherUpdate = 0;
     weatherFetchRequested = true;
-    if (top["location"].isNull() || top["country"].isNull() || top["openWeatherApiKey"].isNull() || top["weatherUpdateMinutes"].isNull())
+    if (top["location"].isNull() || top["country"].isNull() || top["openWeatherApiKey"].isNull() || top["weatherUpdateMinutes"].isNull() || top["roundTemperature"].isNull())
         complete = false;
     for (uint8_t index = 0; index < 8; index++)
     {
@@ -590,6 +571,7 @@ void InfoProvider::addToConfig(JsonObject &root)
     top["country"] = country;
     top["openWeatherApiKey"] = openWeatherApiKey;
     top["weatherUpdateMinutes"] = weatherUpdateMinutes;
+    top["roundTemperature"] = roundTemperature;
     for (uint8_t index = 0; index < 8; index++)
     {
         char key[9];

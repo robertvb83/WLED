@@ -18,7 +18,6 @@
 		document.head.appendChild(l);
 	})();
 
-
 	function S() {
 		getLoc();
 		// load settings and insert values into DOM
@@ -125,7 +124,19 @@
 					t = "text"; c = `value="${o}" style="width:250px;"`;
 					break;
 			}
-			urows += ` ${initCap(f)} `; //only show field (key is shown in grouping)
+			let label = initCap(f);
+			if (k === "InfoProvider") {
+				if (f === "Enable") {
+					urows += '<br>Available tags: [temp] [maxTemp] [maxTempPart] [weather] [termin] [birthdayName] [birthdayFull] [birthdayFull0]<br>';
+				} else if (/^config\d{2}$/.test(f)) {
+					label = `#Info${f.substr(-2)}`;
+					if (f === "config01") urows += '<hr><b>Configs</b><br>';
+				} else if (/^BD\d{2}$/.test(f)) {
+					label = f;
+					if (f === "BD01") urows += '<hr><b>Birthday list (DD.MM|Name)</b><br>';
+				}
+			}
+			urows += ` ${label} `; //only show field (key is shown in grouping)
 			// https://stackoverflow.com/questions/11657123/posting-both-checked-and-unchecked-checkboxes
 			if (t=="checkbox") urows += `<input type="hidden" name="${k}:${f}${a?"[]":""}" value="false">`;
 			else if (!a)       urows += `<input type="hidden" name="${k}:${f}${a?"[]":""}" value="${t}">`;

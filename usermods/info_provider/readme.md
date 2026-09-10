@@ -10,7 +10,7 @@ Activate it in a custom PlatformIO environment with:
 custom_usermods = info_provider
 ```
 
-OpenWeather API 2.5 support is available through the Usermod Settings fields `location`, `country`, `openWeatherApiKey`, and `weatherUpdateMinutes`. The usermod updates `[temp]`, `[maxTemp]`, and `[weather]` in the background. `Fetch weather` triggers an immediate request and `WeatherDebug` shows the last result.
+OpenWeather API 2.5 support is available through the Usermod Settings fields `location`, `country`, `openWeatherApiKey`, and `weatherUpdateMinutes`. Enable `roundTemperature` to display `[temp]` and `[maxTemp]` as whole numbers instead of one decimal place. The usermod updates `[temp]`, `[maxTemp]`, and `[weather]` in the background. `Fetch weather` triggers an immediate request and `WeatherDebug` shows the last result.
 
 The current implementation uses HTTP because this WLED toolchain does not provide a TLS client header. Do not use it for sensitive deployments without adding TLS support.
 

@@ -20,6 +20,7 @@ private:
     float longitude = 0.0f;
     String openWeatherApiKey;
     uint16_t weatherUpdateMinutes = 30;
+    bool roundTemperature = false;
     String weatherDebug = "Not fetched";
     String configs[8] = {
         "Test text", "", "", "", "", "", "", ""};
