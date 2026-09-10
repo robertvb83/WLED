@@ -26,7 +26,6 @@ private:
     scroll_info_data_t infoData{};
     uint32_t lastUpdate = 0;
     uint32_t lastWeatherUpdate = 0;
-    uint32_t testCounter = 0;
     bool weatherFetchRequested = false;
     String currentTemperature;
     String dailyHighTemperature;
