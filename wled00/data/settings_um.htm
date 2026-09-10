@@ -106,7 +106,6 @@
 				addField(k,f,o[j],true);
 			}
 		} else {
-			if (k === "InfoProvider" && /^weatherColor\d{2}$/.test(f)) return;
 			var c, t = typeof o;
 			switch (t) {
 				case "boolean":
@@ -125,28 +124,11 @@
 					t = "text"; c = `value="${o}" style="width:250px;"`;
 					break;
 			}
-			let label = initCap(f);
-			if (k === "InfoProvider") {
-				if (f === "Enable") {
-					urows += '<br>Available tags: [temp] [maxTemp] [maxTempPart] [weather] [termin] [birthdayName] [birthdayFull] [birthdayFull0]<br>';
-				} else if (/^config\d{2}$/.test(f)) {
-					label = `#Info${f.substr(-2)}`;
-					if (f === "config01") urows += '<hr><b>Configs</b><br>';
-				} else if (/^BD\d{2}$/.test(f)) {
-					label = f;
-					if (f === "BD01") urows += '<hr><b>Birthday list (DD.MM|Name)</b><br>';
-				}
-			}
-			urows += ` ${label} `; //only show field (key is shown in grouping)
+			urows += ` ${initCap(f)} `; //only show field (key is shown in grouping)
 			// https://stackoverflow.com/questions/11657123/posting-both-checked-and-unchecked-checkboxes
 			if (t=="checkbox") urows += `<input type="hidden" name="${k}:${f}${a?"[]":""}" value="false">`;
 			else if (!a)       urows += `<input type="hidden" name="${k}:${f}${a?"[]":""}" value="${t}">`;
 			urows += `<input type="${t==="int"?"number":t}" name="${k}:${f}${a?"[]":""}" ${c} oninput="check(this,'${k.substr(k.indexOf(":")+1)}')"><br>`;
-			if (k === "InfoProvider" && /^config\d{2}$/.test(f)) {
-				const colorKey = `weatherColor${f.substr(-2)}`;
-				const checked = umCfg[k][colorKey] ? ' checked' : '';
-				urows += ` weather color <input type="hidden" name="${k}:${colorKey}" value="false"><input type="checkbox" name="${k}:${colorKey}" value="true"${checked}><br>`;
-			}
 		}
 	}
 	function pinDD() {

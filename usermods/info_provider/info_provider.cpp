@@ -55,7 +55,26 @@ void InfoProvider::connected()
 
 void InfoProvider::appendConfigData()
 {
-    // InfoProvider-specific labels are rendered directly by settings_um.htm.
+    oappend(F("addInfo('InfoProvider:Enable',1,'<br>Available tags: [temp] [maxTemp] [maxTempPart] [weather] [termin] [birthdayName] [birthdayFull] [birthdayFull0]');"));
+    oappend(F("addInfo('InfoProvider:weatherUpdateMinutes',1,'minutes');"));
+    oappend(F("var f=document.getElementsByName(\"InfoProvider:config01\")[1];if(f&&f.previousSibling&&f.previousSibling.previousSibling)f.previousSibling.previousSibling.nodeValue=' #Info01 ';"));
+    oappend(F("var f=document.getElementsByName(\"InfoProvider:config02\")[1];if(f&&f.previousSibling&&f.previousSibling.previousSibling)f.previousSibling.previousSibling.nodeValue=' #Info02 ';"));
+    oappend(F("var f=document.getElementsByName(\"InfoProvider:config03\")[1];if(f&&f.previousSibling&&f.previousSibling.previousSibling)f.previousSibling.previousSibling.nodeValue=' #Info03 ';"));
+    oappend(F("var f=document.getElementsByName(\"InfoProvider:config04\")[1];if(f&&f.previousSibling&&f.previousSibling.previousSibling)f.previousSibling.previousSibling.nodeValue=' #Info04 ';"));
+    oappend(F("var f=document.getElementsByName(\"InfoProvider:config05\")[1];if(f&&f.previousSibling&&f.previousSibling.previousSibling)f.previousSibling.previousSibling.nodeValue=' #Info05 ';"));
+    oappend(F("var f=document.getElementsByName(\"InfoProvider:config06\")[1];if(f&&f.previousSibling&&f.previousSibling.previousSibling)f.previousSibling.previousSibling.nodeValue=' #Info06 ';"));
+    oappend(F("var f=document.getElementsByName(\"InfoProvider:config07\")[1];if(f&&f.previousSibling&&f.previousSibling.previousSibling)f.previousSibling.previousSibling.nodeValue=' #Info07 ';"));
+    oappend(F("var f=document.getElementsByName(\"InfoProvider:config08\")[1];if(f&&f.previousSibling&&f.previousSibling.previousSibling)f.previousSibling.previousSibling.nodeValue=' #Info08 ';"));
+    oappend(F("var f=document.getElementsByName(\"InfoProvider:weatherColor01\")[1];if(f&&f.previousSibling&&f.previousSibling.previousSibling)f.previousSibling.previousSibling.nodeValue=' weather color ';"));
+    oappend(F("var f=document.getElementsByName(\"InfoProvider:weatherColor02\")[1];if(f&&f.previousSibling&&f.previousSibling.previousSibling)f.previousSibling.previousSibling.nodeValue=' weather color ';"));
+    oappend(F("var f=document.getElementsByName(\"InfoProvider:weatherColor03\")[1];if(f&&f.previousSibling&&f.previousSibling.previousSibling)f.previousSibling.previousSibling.nodeValue=' weather color ';"));
+    oappend(F("var f=document.getElementsByName(\"InfoProvider:weatherColor04\")[1];if(f&&f.previousSibling&&f.previousSibling.previousSibling)f.previousSibling.previousSibling.nodeValue=' weather color ';"));
+    oappend(F("var f=document.getElementsByName(\"InfoProvider:weatherColor05\")[1];if(f&&f.previousSibling&&f.previousSibling.previousSibling)f.previousSibling.previousSibling.nodeValue=' weather color ';"));
+    oappend(F("var f=document.getElementsByName(\"InfoProvider:weatherColor06\")[1];if(f&&f.previousSibling&&f.previousSibling.previousSibling)f.previousSibling.previousSibling.nodeValue=' weather color ';"));
+    oappend(F("var f=document.getElementsByName(\"InfoProvider:weatherColor07\")[1];if(f&&f.previousSibling&&f.previousSibling.previousSibling)f.previousSibling.previousSibling.nodeValue=' weather color ';"));
+    oappend(F("var f=document.getElementsByName(\"InfoProvider:weatherColor08\")[1];if(f&&f.previousSibling&&f.previousSibling.previousSibling)f.previousSibling.previousSibling.nodeValue=' weather color ';"));
+    oappend(F("var f=document.getElementsByName(\"InfoProvider:config01\")[1],n=f&&f.previousSibling&&f.previousSibling.previousSibling;if(n){var h=document.createElement('span');h.innerHTML='<div style=\"border-top:1px solid currentColor;margin:8px 0\"></div><b>Configs</b><br>';n.parentNode.insertBefore(h,n);}"));
+    oappend(F("var f=document.getElementsByName(\"InfoProvider:BD01\")[1],n=f&&f.previousSibling&&f.previousSibling.previousSibling;if(n){var h=document.createElement('span');h.innerHTML='<div style=\"border-top:1px solid currentColor;margin:8px 0\"></div><b>Birthday list</b><br>';n.parentNode.insertBefore(h,n);}"));
 }
 
 uint32_t InfoProvider::getWeatherColor() const
