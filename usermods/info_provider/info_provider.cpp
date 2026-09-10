@@ -59,22 +59,21 @@ void InfoProvider::appendConfigData()
     oappend(F("addInfo('InfoProvider:Enable',1,'<br>Available templates: [temp] [maxTemp] [maxTempPart] [weather] [termin] [birthdayName] [birthdayFull] [birthdayFull0]');"));
     oappend(F("addInfo('InfoProvider:location',1,'city or area');"));
     oappend(F("addInfo('InfoProvider:country',1,'ISO 3166 code');"));
-    oappend(F("addInfo('InfoProvider:weatherUpdateMinutes',1,'minutes');"));
-    oappend(F("addInfo('InfoProvider:openWeatherApiKey',1,'OpenWeather API key');"));
-    oappend(F("addInfo('InfoProvider:openWeatherApiKey',1,'','<button type=\"button\" onclick=\"fetch(&quot;/json/state&quot;,{method:&quot;POST&quot;,headers:{&quot;Content-Type&quot;:&quot;application/json&quot;},body:&quot;{\\&quot;InfoProvider\\&quot;:{\\&quot;fetch\\&quot;:true}}&quot;}).then(()=>setTimeout(()=>location.reload(),1500))\">Fetch weather</button>');"));
+    oappend(F("addInfo('InfoProvider:weatherUpdateMinutes',1,'minutes<br><hr><b>Configs</b>');"));
+    oappend(F("addInfo('InfoProvider:openWeatherApiKey',1,'OpenWeather API key <button type=\"button\" onclick=\"fetch(&quot;/json/state&quot;,{method:&quot;POST&quot;,headers:{&quot;Content-Type&quot;:&quot;application/json&quot;},body:&quot;{\\&quot;InfoProvider\\&quot;:{\\&quot;fetch\\&quot;:true}}&quot;}).then(()=>setTimeout(()=>location.reload(),1500))\">Fetch weather</button>');"));
     for (uint8_t index = 0; index < 8; index++)
     {
         snprintf(script, sizeof(script),
-                 "addInfo('InfoProvider:config%02u',1,'','Use #Info%02u');",
+                 "let f=document.getElementsByName('InfoProvider:config%02u')[0];if(f&&f.previousSibling)f.previousSibling.textContent='#Info%02u ';",
                  index + 1, index + 1);
         oappend(script);
     }
-    oappend(F("addInfo('InfoProvider:config08',1,'<hr><br>Birthday list (DD.MM|Name)','');"));
+    oappend(F("addInfo('InfoProvider:config08',1,'<br><hr><b>Birthdays (DD.MM|Name)</b>','');"));
     for (uint8_t index = 0; index < BirthdaySlots; index++)
     {
         snprintf(script, sizeof(script),
-                 "addInfo('InfoProvider:birthday%02u',1,'','BD%02u');",
-                 index + 1);
+                 "let f=document.getElementsByName('InfoProvider:BD%02u')[0];if(f&&f.previousSibling)f.previousSibling.textContent='BD%02u ';",
+                 index + 1, index + 1);
         oappend(script);
     }
 }
@@ -569,10 +568,12 @@ bool InfoProvider::readFromConfig(JsonObject &root)
     for (uint8_t index = 0; index < BirthdaySlots; index++)
     {
         char key[13];
-        snprintf(key, sizeof(key), "birthday%02u", index + 1);
-        if (top[key].isNull())
+        char legacyKey[13];
+        snprintf(key, sizeof(key), "BD%02u", index + 1);
+        snprintf(legacyKey, sizeof(legacyKey), "birthday%02u", index + 1);
+        if (top[key].isNull() && top[legacyKey].isNull())
             complete = false;
-        birthdays[index] = top[key] | birthdays[index];
+        birthdays[index] = top[key] | (top[legacyKey] | birthdays[index]);
         if (birthdays[index].length() > WLED_MAX_SEGNAME_LEN)
             birthdays[index].remove(WLED_MAX_SEGNAME_LEN);
     }
@@ -598,7 +599,7 @@ void InfoProvider::addToConfig(JsonObject &root)
     for (uint8_t index = 0; index < BirthdaySlots; index++)
     {
         char key[13];
-        snprintf(key, sizeof(key), "birthday%02u", index + 1);
+        snprintf(key, sizeof(key), "BD%02u", index + 1);
         top[key] = birthdays[index];
     }
 }
