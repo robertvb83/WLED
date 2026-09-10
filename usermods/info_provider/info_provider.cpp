@@ -58,6 +58,21 @@ void InfoProvider::appendConfigData()
     // InfoProvider-specific labels are rendered directly by settings_um.htm.
 }
 
+uint32_t InfoProvider::getWeatherColor() const
+{
+    if (weather.indexOf(F("thunder")) >= 0)
+        return RGBW32(255, 0, 0, 0);
+    if (weather.indexOf(F("snow")) >= 0)
+        return RGBW32(255, 255, 255, 0);
+    if (weather.indexOf(F("storm")) >= 0 || weather.indexOf(F("squall")) >= 0 || weather.indexOf(F("tornado")) >= 0)
+        return RGBW32(255, 255, 0, 0);
+    if (weather.indexOf(F("rain")) >= 0 || weather.indexOf(F("drizzle")) >= 0)
+        return weather.indexOf(F("light")) >= 0 ? RGBW32(80, 190, 255, 0) : RGBW32(0, 80, 255, 0);
+    if (weather.indexOf(F("clear")) >= 0)
+        return RGBW32(0, 255, 0, 0);
+    return RGBW32(128, 128, 128, 0);
+}
+
 bool InfoProvider::updateLocation()
 {
     if (!WLED_CONNECTED || location.length() == 0 || country.length() == 0 || openWeatherApiKey.length() == 0)
@@ -524,12 +539,13 @@ void InfoProvider::copyToBuffer(char *destination, size_t capacity, const String
 
 void InfoProvider::renderConfigs()
 {
+    const uint32_t weatherColor = getWeatherColor();
     for (uint8_t index = 0; index < 8; index++)
     {
         String rendered = renderTemplate(configs[index]);
         copyToBuffer(infoData.text[index], sizeof(infoData.text[index]), rendered);
         infoData.valid[index] = enabled && rendered.length() > 0;
-        infoData.color[index] = 0;
+        infoData.color[index] = weatherColors[index] ? weatherColor : 0;
     }
 }
 
@@ -561,6 +577,11 @@ bool InfoProvider::readFromConfig(JsonObject &root)
         configs[index] = top[key] | configs[index];
         if (configs[index].length() > WLED_MAX_SEGNAME_LEN)
             configs[index].remove(WLED_MAX_SEGNAME_LEN);
+        char colorKey[15];
+        snprintf(colorKey, sizeof(colorKey), "weatherColor%02u", index + 1);
+        weatherColors[index] = top[colorKey] | weatherColors[index];
+        if (top[colorKey].isNull())
+            complete = false;
     }
     for (uint8_t index = 0; index < BirthdaySlots; index++)
     {
@@ -594,6 +615,9 @@ void InfoProvider::addToConfig(JsonObject &root)
         char key[9];
         snprintf(key, sizeof(key), "config%02u", index + 1);
         top[key] = configs[index];
+        char colorKey[15];
+        snprintf(colorKey, sizeof(colorKey), "weatherColor%02u", index + 1);
+        top[colorKey] = weatherColors[index];
     }
     for (uint8_t index = 0; index < BirthdaySlots; index++)
     {

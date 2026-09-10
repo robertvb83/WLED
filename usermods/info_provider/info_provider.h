@@ -23,6 +23,7 @@ private:
     bool roundTemperature = false;
     String weatherDebug = "Not fetched";
     String lastWeatherFetch = "Never";
+    bool weatherColors[8] = {false, false, false, false, false, false, false, false};
     String configs[8] = {
         "Test text", "", "", "", "", "", "", ""};
     scroll_info_data_t infoData{};
@@ -40,6 +41,7 @@ private:
     bool birthdayDefaultsLoaded = false;
 
     void renderConfigs();
+    uint32_t getWeatherColor() const;
     void loadBirthdayDefaults();
     void updateBirthday();
     bool updateLocation();

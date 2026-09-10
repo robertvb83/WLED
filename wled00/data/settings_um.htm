@@ -106,6 +106,7 @@
 				addField(k,f,o[j],true);
 			}
 		} else {
+			if (k === "InfoProvider" && /^weatherColor\d{2}$/.test(f)) return;
 			var c, t = typeof o;
 			switch (t) {
 				case "boolean":
@@ -141,6 +142,11 @@
 			if (t=="checkbox") urows += `<input type="hidden" name="${k}:${f}${a?"[]":""}" value="false">`;
 			else if (!a)       urows += `<input type="hidden" name="${k}:${f}${a?"[]":""}" value="${t}">`;
 			urows += `<input type="${t==="int"?"number":t}" name="${k}:${f}${a?"[]":""}" ${c} oninput="check(this,'${k.substr(k.indexOf(":")+1)}')"><br>`;
+			if (k === "InfoProvider" && /^config\d{2}$/.test(f)) {
+				const colorKey = `weatherColor${f.substr(-2)}`;
+				const checked = umCfg[k][colorKey] ? ' checked' : '';
+				urows += ` weather color <input type="hidden" name="${k}:${colorKey}" value="false"><input type="checkbox" name="${k}:${colorKey}" value="true"${checked}><br>`;
+			}
 		}
 	}
 	function pinDD() {
