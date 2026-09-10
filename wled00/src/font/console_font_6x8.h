@@ -150,6 +150,6 @@ static const unsigned char console_font_6x8[] PROGMEM = {
     0xEE,                                   /* code=124, hex=0x7C, ascii="|", w=1 */
     0xC2, 0x23, 0x22, 0xC0,                 /* code=125, hex=0x7D, ascii="}", w=4 */
     // 0x5A, 0x00, 0x00, 0x00                  /* code=126, hex=0x7E, ascii="~", w=4 */
-    0x69, 0x60, 0x00, 0x00                  /* code=126, hex=0x7E, ascii="°", w=4 */
+    0x69, 0x96, 0x00, 0x00                  /* code=126, hex=0x7E, ascii="°", w=4 */
 };
 
