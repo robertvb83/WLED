@@ -30,10 +30,14 @@
 #include <vector>
 #include <algorithm>
 
-#ifndef PRESENCE_MAX_DEVICES
-#define PRESENCE_MAX_DEVICES 16 // max number of checkboxes shown on the settings page (buffer is limited)
+#ifndef PRESENCE_MAX_FOUND
+#define PRESENCE_MAX_FOUND 48 // max devices remembered from a scan (RAM only, cheap to keep generous)
+#endif
+#ifndef PRESENCE_MAX_SHOWN
+#define PRESENCE_MAX_SHOWN 32 // max checkboxes shown on the settings page (oappend buffer is limited)
 #endif
 #define PRESENCE_PING_TIMEOUT_MS 800 // max time to wait for a single ping reply
+#define PRESENCE_PING_RETRIES 2      // extra attempts per watched device before declaring it absent
 #define PRESENCE_SCAN_HOST_MAX 254   // scan x.x.x.1 - x.x.x.254 of the local /24
 
 class PresenceSwitchUsermod : public Usermod
@@ -52,14 +56,19 @@ private:
     uint16_t checkIntervalSec = 30; // how often watched devices are (re-)pinged
 
     // devices the user selected to be watched, and devices found during the last scan
-    // (both are keys built by ipToKey(), RAM only for foundIPs)
+    // (both are keys built by ipToKey(), RAM only for foundIPs/foundSeenAt)
     std::vector<uint32_t> watchedIPs;
     std::vector<uint32_t> foundIPs;
+    std::vector<unsigned long> foundSeenAt;   // millis() a device last answered a scan probe, parallel to foundIPs
+    std::vector<unsigned long> watchedSeenAt; // millis() a watched device last answered a presence probe
+    std::vector<bool> watchedPresent;
+    String extraIPs = ""; // extra IPv4s to always watch (comma/space separated), for devices the scan misses or skips
 
     // ping engine state machine (shared by scan and presence-check rounds)
     Mode mode = Mode::IDLE;
     std::vector<uint32_t> queue;
     size_t queueIndex = 0;
+    uint8_t presenceRetriesLeft = 0; // retries remaining for the device currently being probed (PRESENCE mode only)
     bool pingBusy = false;
     volatile bool pingGotReply = false;
     unsigned long pingStarted = 0;
@@ -74,16 +83,15 @@ private:
     bool switchedOffByMod = false;
     uint8_t restoreBri = 128;
 
-    // auto-scan shortly after (re)connecting, if nothing has been found yet
-    bool wantAutoScan = false;
-    unsigned long autoScanRequestedAt = 0;
-
     bool initDone = false;
 
     static const char _name[];
     static const char _enabled[];
     static const char _offDelay[];
     static const char _interval[];
+    static const char _extraIPs[];
+
+    static void addIpsFromString(const String &list, std::vector<uint32_t> &out);
 
     static uint32_t ipToKey(const IPAddress &ip)
     {
@@ -111,13 +119,6 @@ public:
     {
         lastSeenTime = millis(); // start the "absent" timer from boot, not from an unset value
         initDone = true;
-    }
-
-    void connected() override
-    {
-        // give the network stack a moment, then scan automatically if we don't know any devices yet
-        wantAutoScan = true;
-        autoScanRequestedAt = millis();
     }
 
     void loop() override;
@@ -177,8 +178,8 @@ public:
             if (std::find(shown.begin(), shown.end(), k) == shown.end())
                 shown.push_back(k);
         }
-        if (shown.size() > PRESENCE_MAX_DEVICES)
-            shown.resize(PRESENCE_MAX_DEVICES);
+        if (shown.size() > PRESENCE_MAX_SHOWN)
+            shown.resize(PRESENCE_MAX_SHOWN);
 
         for (uint32_t k : shown)
         {
@@ -188,6 +189,8 @@ public:
             bool watched = std::find(watchedIPs.begin(), watchedIPs.end(), k) != watchedIPs.end();
             top[key] = watched;
         }
+
+        top[FPSTR(_extraIPs)] = extraIPs;
     }
 
     bool readFromConfig(JsonObject &root) override
@@ -215,6 +218,12 @@ public:
                 }
             }
         }
+
+        configComplete &= getJsonValue(top[FPSTR(_extraIPs)], extraIPs, "");
+        addIpsFromString(extraIPs, watchedIPs); // devices typed in manually always count, regardless of scan/display limits
+        watchedSeenAt.assign(watchedIPs.size(), 0);
+        watchedPresent.assign(watchedIPs.size(), false);
+
         return configComplete;
     }
 
@@ -234,14 +243,27 @@ public:
         oappend(String(FPSTR(_interval)).c_str());
         oappend(F("',1,'seconds between presence checks');"));
 
+        oappend(F("function presenceSwitchScan(){const b=document.getElementById('presenceSwitchScanButton');if(b){b.disabled=true;b.textContent='Scanning...';}fetch('/json/state',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({PresenceSwitch:{scan:true}})}).then(()=>{const wait=()=>fetch('/json/state',{cache:'no-store'}).then(r=>r.json()).then(s=>{if(s.PresenceSwitch&&s.PresenceSwitch.scanning){setTimeout(wait,2000);}else{location.reload();}}).catch(()=>setTimeout(wait,2000));wait();});}"));
+        oappend(F("addInfo('"));
+        oappend(nm.c_str());
+        oappend(F(":enabled',1,'<button id=\"presenceSwitchScanButton\" class=\"btn btn-xs\" type=\"button\" onclick=\"presenceSwitchScan();\">Scan now</button>');"));
+
+        oappend(F("addInfo('"));
+        oappend(nm.c_str());
+        oappend(F(":"));
+        oappend(String(FPSTR(_extraIPs)).c_str());
+        oappend(F("',1,'extra device IPs to always watch, e.g. 192.168.1.50, 192.168.1.77 - use this if the scan did not list a device (e.g. more than "));
+        oappend(String(PRESENCE_MAX_SHOWN).c_str());
+        oappend(F(" devices answered)');"));
+
         std::vector<uint32_t> shown = watchedIPs;
         for (uint32_t k : foundIPs)
         {
             if (std::find(shown.begin(), shown.end(), k) == shown.end())
                 shown.push_back(k);
         }
-        if (shown.size() > PRESENCE_MAX_DEVICES)
-            shown.resize(PRESENCE_MAX_DEVICES);
+        if (shown.size() > PRESENCE_MAX_SHOWN)
+            shown.resize(PRESENCE_MAX_SHOWN);
 
         if (shown.empty())
         {
@@ -255,17 +277,36 @@ public:
         {
             for (uint32_t k : shown)
             {
-                IPAddress ip = keyToIp(k);
                 char key[24];
-                snprintf(key, sizeof(key), "ip_%u_%u_%u_%u", ip[0], ip[1], ip[2], ip[3]);
-                bool present = std::find(foundIPs.begin(), foundIPs.end(), k) != foundIPs.end();
+                {
+                    IPAddress ip = keyToIp(k);
+                    snprintf(key, sizeof(key), "ip_%u_%u_%u_%u", ip[0], ip[1], ip[2], ip[3]);
+                }
                 oappend(F("addInfo('"));
                 oappend(nm.c_str());
                 oappend(F(":"));
                 oappend(key);
                 oappend(F("',1,'"));
-                oappend(ip.toString().c_str());
-                oappend(present ? F(" - seen in last scan');") : F(" - not seen in last scan');"));
+
+                auto it = std::find(foundIPs.begin(), foundIPs.end(), k);
+                auto watchedIt = std::find(watchedIPs.begin(), watchedIPs.end(), k);
+                if (watchedIt != watchedIPs.end())
+                {
+                    size_t watchedIndex = watchedIt - watchedIPs.begin();
+                    oappend(watchedPresent[watchedIndex] ? F("present") : F("not responding"));
+                    oappend(F("');"));
+                }
+                else if (it != foundIPs.end())
+                {
+                    unsigned long ageSec = (millis() - foundSeenAt[it - foundIPs.begin()]) / 1000;
+                    oappend(F("seen "));
+                    oappend(String(ageSec).c_str());
+                    oappend(F("s ago');"));
+                }
+                else
+                {
+                    oappend(F("not seen in last scan');"));
+                }
             }
         }
     }
@@ -277,6 +318,31 @@ const char PresenceSwitchUsermod::_name[] PROGMEM = "PresenceSwitch";
 const char PresenceSwitchUsermod::_enabled[] PROGMEM = "enabled";
 const char PresenceSwitchUsermod::_offDelay[] PROGMEM = "offDelayMin";
 const char PresenceSwitchUsermod::_interval[] PROGMEM = "checkIntervalSec";
+const char PresenceSwitchUsermod::_extraIPs[] PROGMEM = "extraIPs";
+
+void PresenceSwitchUsermod::addIpsFromString(const String &list, std::vector<uint32_t> &out)
+{
+    int start = 0;
+    while (start < (int)list.length())
+    {
+        while (start < (int)list.length() && (list[start] == ',' || list[start] == ' ' || list[start] == ';'))
+            start++;
+        int end = start;
+        while (end < (int)list.length() && list[end] != ',' && list[end] != ' ' && list[end] != ';')
+            end++;
+        if (end > start)
+        {
+            IPAddress ip;
+            if (ip.fromString(list.substring(start, end)))
+            {
+                uint32_t k = ipToKey(ip);
+                if (std::find(out.begin(), out.end(), k) == out.end())
+                    out.push_back(k);
+            }
+        }
+        start = end;
+    }
+}
 
 void PresenceSwitchUsermod::applySwitch(bool on)
 {
@@ -369,21 +435,43 @@ void PresenceSwitchUsermod::advanceQueue()
     if (mode == Mode::SCAN)
     {
         uint32_t k = queue[queueIndex];
-        if (success && foundIPs.size() < PRESENCE_MAX_DEVICES &&
+        if (success && foundIPs.size() < PRESENCE_MAX_FOUND &&
             std::find(foundIPs.begin(), foundIPs.end(), k) == foundIPs.end())
         {
             foundIPs.push_back(k);
+            foundSeenAt.push_back(millis());
+        }
+
+        auto watchedIt = std::find(watchedIPs.begin(), watchedIPs.end(), k);
+        if (watchedIt != watchedIPs.end() && success)
+        {
+            size_t watchedIndex = watchedIt - watchedIPs.begin();
+            watchedPresent[watchedIndex] = true;
+            watchedSeenAt[watchedIndex] = millis();
+            anyPresent = true;
+            lastSeenTime = millis();
         }
     }
     else if (mode == Mode::PRESENCE)
     {
+        size_t watchedIndex = queueIndex;
         if (success)
         {
+            watchedPresent[watchedIndex] = true;
+            watchedSeenAt[watchedIndex] = millis();
             anyPresent = true;
             lastSeenTime = millis();
             finishQueue(); // no need to probe the remaining watched devices this round
             return;
         }
+        if (presenceRetriesLeft > 0)
+        {
+            // phones/tablets in power-save mode can be slow to answer; retry before giving up on this device
+            presenceRetriesLeft--;
+            startPing(keyToIp(queue[queueIndex]));
+            return;
+        }
+        watchedPresent[watchedIndex] = false;
     }
 
     queueIndex++;
@@ -394,6 +482,7 @@ void PresenceSwitchUsermod::advanceQueue()
         finishQueue();
         return;
     }
+    presenceRetriesLeft = PRESENCE_PING_RETRIES;
     startPing(keyToIp(queue[queueIndex]));
 }
 
@@ -404,13 +493,18 @@ void PresenceSwitchUsermod::beginScan()
 
     IPAddress local = Network.localIP();
     queue.clear();
+    for (uint32_t k : watchedIPs)
+        queue.push_back(k);
     for (uint16_t h = 1; h <= PRESENCE_SCAN_HOST_MAX; h++)
     {
         if (h == local[3])
             continue; // skip our own address
-        queue.push_back(ipToKey(IPAddress(local[0], local[1], local[2], (uint8_t)h)));
+        uint32_t k = ipToKey(IPAddress(local[0], local[1], local[2], (uint8_t)h));
+        if (std::find(queue.begin(), queue.end(), k) == queue.end())
+            queue.push_back(k);
     }
     foundIPs.clear();
+    foundSeenAt.clear();
     queueIndex = 0;
     mode = Mode::SCAN;
     startPing(keyToIp(queue[0]));
@@ -428,6 +522,7 @@ void PresenceSwitchUsermod::beginPresenceRound()
 
     queue = watchedIPs;
     queueIndex = 0;
+    presenceRetriesLeft = PRESENCE_PING_RETRIES;
     mode = Mode::PRESENCE;
     startPing(keyToIp(queue[0]));
 }
@@ -454,18 +549,10 @@ void PresenceSwitchUsermod::loop()
             }
         }
         advanceQueue();
-        return;
     }
 
     if (!WLED_CONNECTED)
         return;
-
-    if (wantAutoScan && now - autoScanRequestedAt > 5000)
-    {
-        wantAutoScan = false;
-        if (foundIPs.empty())
-            beginScan();
-    }
 
     if (now - lastFullCheck >= (unsigned long)checkIntervalSec * 1000UL)
     {
