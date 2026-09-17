@@ -7,13 +7,8 @@
  * address). If none of the watched devices have answered for a configurable amount of time, WLED
  * is switched off. As soon as any watched device answers again, WLED is switched back on.
  *
- * The usermod can also perform a one-off scan of the local /24 subnet (triggered automatically
- * shortly after Wi-Fi connects, or on demand via {"PresenceSwitch":{"scan":true}} sent to
- * /json/state). Devices that answer the scan are offered as checkboxes on the Usermod Settings
- * page so the user can pick which ones to watch.
- *
- * Network scanning/pinging uses the ESP-IDF "ping_sock" API and is therefore ESP32-only; on
- * ESP8266 the usermod compiles but presence detection is always reported as "absent".
+ * Presence checks use the ESP-IDF "ping_sock" API and are therefore ESP32-only; on ESP8266
+ * the usermod compiles but presence detection is always reported as "absent".
  *
  * Devices are identified purely by IPv4 address (not MAC), so for reliable long-term tracking
  * configure a DHCP reservation for the watched devices on your router.
@@ -30,15 +25,8 @@
 #include <vector>
 #include <algorithm>
 
-#ifndef PRESENCE_MAX_FOUND
-#define PRESENCE_MAX_FOUND 48 // max devices remembered from a scan (RAM only, cheap to keep generous)
-#endif
-#ifndef PRESENCE_MAX_SHOWN
-#define PRESENCE_MAX_SHOWN 32 // max checkboxes shown on the settings page (oappend buffer is limited)
-#endif
 #define PRESENCE_PING_TIMEOUT_MS 800 // max time to wait for a single ping reply
 #define PRESENCE_PING_RETRIES 2      // extra attempts per watched device before declaring it absent
-#define PRESENCE_SCAN_HOST_MAX 254   // scan x.x.x.1 - x.x.x.254 of the local /24
 
 class PresenceSwitchUsermod : public Usermod
 {
@@ -46,7 +34,6 @@ private:
     enum class Mode : uint8_t
     {
         IDLE,
-        SCAN,
         PRESENCE
     };
 
@@ -55,16 +42,13 @@ private:
     uint16_t offDelayMin = 10;      // minutes with no watched device present before switching off (0 = never)
     uint16_t checkIntervalSec = 30; // how often watched devices are (re-)pinged
 
-    // devices the user selected to be watched, and devices found during the last scan
-    // (both are keys built by ipToKey(), RAM only for foundIPs/foundSeenAt)
+    // devices configured in extraIPs, represented as packed IPv4 keys
     std::vector<uint32_t> watchedIPs;
-    std::vector<uint32_t> foundIPs;
-    std::vector<unsigned long> foundSeenAt;   // millis() a device last answered a scan probe, parallel to foundIPs
     std::vector<unsigned long> watchedSeenAt; // millis() a watched device last answered a presence probe
     std::vector<bool> watchedPresent;
-    String extraIPs = ""; // extra IPv4s to always watch (comma/space separated), for devices the scan misses or skips
+    String extraIPs = ""; // IPv4s to always watch (comma/space/semicolon separated)
 
-    // ping engine state machine (shared by scan and presence-check rounds)
+    // ping engine state machine
     Mode mode = Mode::IDLE;
     std::vector<uint32_t> queue;
     size_t queueIndex = 0;
@@ -105,7 +89,6 @@ private:
     void startPing(const IPAddress &ip);
     void advanceQueue();
     void finishQueue();
-    void beginScan();
     void beginPresenceRound();
     void applySwitch(bool on);
 
@@ -150,7 +133,6 @@ public:
         if (um.isNull())
             um = root.createNestedObject(FPSTR(_name));
         um["present"] = anyPresent;
-        um["scanning"] = (mode == Mode::SCAN);
     }
 
     void readFromJsonState(JsonObject &root) override
@@ -160,8 +142,6 @@ public:
         JsonObject um = root[FPSTR(_name)];
         if (um.isNull())
             return;
-        if (um["scan"] | false)
-            beginScan();
     }
 
     void addToConfig(JsonObject &root) override
@@ -171,23 +151,12 @@ public:
         top[FPSTR(_offDelay)] = offDelayMin;
         top[FPSTR(_interval)] = checkIntervalSec;
 
-        // union of watched + found devices so the settings page can offer a checkbox for each
-        std::vector<uint32_t> shown = watchedIPs;
-        for (uint32_t k : foundIPs)
-        {
-            if (std::find(shown.begin(), shown.end(), k) == shown.end())
-                shown.push_back(k);
-        }
-        if (shown.size() > PRESENCE_MAX_SHOWN)
-            shown.resize(PRESENCE_MAX_SHOWN);
-
-        for (uint32_t k : shown)
+        for (uint32_t k : watchedIPs)
         {
             IPAddress ip = keyToIp(k);
             char key[24];
             snprintf(key, sizeof(key), "ip_%u_%u_%u_%u", ip[0], ip[1], ip[2], ip[3]);
-            bool watched = std::find(watchedIPs.begin(), watchedIPs.end(), k) != watchedIPs.end();
-            top[key] = watched;
+            top[key] = true;
         }
 
         top[FPSTR(_extraIPs)] = extraIPs;
@@ -202,25 +171,39 @@ public:
         configComplete &= getJsonValue(top[FPSTR(_offDelay)], offDelayMin, 10);
         configComplete &= getJsonValue(top[FPSTR(_interval)], checkIntervalSec, 30);
 
-        // dynamic "ip_a_b_c_d" checkbox fields are not known ahead of time, so scan for them directly
+        configComplete &= getJsonValue(top[FPSTR(_extraIPs)], extraIPs, "");
+        String enteredIPs = extraIPs;
         watchedIPs.clear();
-        if (!top.isNull())
+        std::vector<uint32_t> storedIPs;
+        for (JsonPair kv : top)
         {
-            for (JsonPair kv : top)
-            {
-                const char *key = kv.key().c_str();
-                if (strncmp(key, "ip_", 3) != 0)
-                    continue;
-                unsigned a, b, c, d;
-                if (sscanf(key + 3, "%u_%u_%u_%u", &a, &b, &c, &d) == 4 && kv.value().as<bool>())
-                {
-                    watchedIPs.push_back(ipToKey(IPAddress(a, b, c, d)));
-                }
-            }
+            const char *key = kv.key().c_str();
+            if (strncmp(key, "ip_", 3) != 0)
+                continue;
+            unsigned a, b, c, d;
+            if (sscanf(key + 3, "%u_%u_%u_%u", &a, &b, &c, &d) != 4)
+                continue;
+            uint32_t k = ipToKey(IPAddress(a, b, c, d));
+            storedIPs.push_back(k);
+            if (kv.value().as<bool>())
+                watchedIPs.push_back(k);
         }
 
-        configComplete &= getJsonValue(top[FPSTR(_extraIPs)], extraIPs, "");
-        addIpsFromString(extraIPs, watchedIPs); // devices typed in manually always count, regardless of scan/display limits
+        std::vector<uint32_t> entered;
+        addIpsFromString(enteredIPs, entered);
+        for (uint32_t k : entered)
+        {
+            if (std::find(storedIPs.begin(), storedIPs.end(), k) == storedIPs.end())
+                watchedIPs.push_back(k);
+        }
+
+        extraIPs = "";
+        for (uint32_t k : watchedIPs)
+        {
+            if (extraIPs.length() > 0)
+                extraIPs += ", ";
+            extraIPs += keyToIp(k).toString();
+        }
         watchedSeenAt.assign(watchedIPs.size(), 0);
         watchedPresent.assign(watchedIPs.size(), false);
 
@@ -243,71 +226,24 @@ public:
         oappend(String(FPSTR(_interval)).c_str());
         oappend(F("',1,'seconds between presence checks');"));
 
-        oappend(F("function presenceSwitchScan(){const b=document.getElementById('presenceSwitchScanButton');if(b){b.disabled=true;b.textContent='Scanning...';}fetch('/json/state',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({PresenceSwitch:{scan:true}})}).then(()=>{const wait=()=>fetch('/json/state',{cache:'no-store'}).then(r=>r.json()).then(s=>{if(s.PresenceSwitch&&s.PresenceSwitch.scanning){setTimeout(wait,2000);}else{location.reload();}}).catch(()=>setTimeout(wait,2000));wait();});}"));
-        oappend(F("addInfo('"));
-        oappend(nm.c_str());
-        oappend(F(":enabled',1,'<button id=\"presenceSwitchScanButton\" class=\"btn btn-xs\" type=\"button\" onclick=\"presenceSwitchScan();\">Scan now</button>');"));
-
         oappend(F("addInfo('"));
         oappend(nm.c_str());
         oappend(F(":"));
         oappend(String(FPSTR(_extraIPs)).c_str());
-        oappend(F("',1,'extra device IPs to always watch, e.g. 192.168.1.50, 192.168.1.77 - use this if the scan did not list a device (e.g. more than "));
-        oappend(String(PRESENCE_MAX_SHOWN).c_str());
-        oappend(F(" devices answered)');"));
+        oappend(F("',1,'comma- or space-separated IPv4 addresses to always watch, e.g. 192.168.1.50, 192.168.1.77');"));
 
-        std::vector<uint32_t> shown = watchedIPs;
-        for (uint32_t k : foundIPs)
+        for (uint32_t k : watchedIPs)
         {
-            if (std::find(shown.begin(), shown.end(), k) == shown.end())
-                shown.push_back(k);
-        }
-        if (shown.size() > PRESENCE_MAX_SHOWN)
-            shown.resize(PRESENCE_MAX_SHOWN);
-
-        if (shown.empty())
-        {
+            IPAddress ip = keyToIp(k);
+            char key[24];
+            snprintf(key, sizeof(key), "ip_%u_%u_%u_%u", ip[0], ip[1], ip[2], ip[3]);
             oappend(F("addInfo('"));
             oappend(nm.c_str());
             oappend(F(":"));
-            oappend(String(FPSTR(_interval)).c_str());
-            oappend(F("',1,'No devices known yet - WLED scans the local network shortly after connecting to Wi-Fi. Send scan:true in the state API to rescan.');"));
-        }
-        else
-        {
-            for (uint32_t k : shown)
-            {
-                char key[24];
-                {
-                    IPAddress ip = keyToIp(k);
-                    snprintf(key, sizeof(key), "ip_%u_%u_%u_%u", ip[0], ip[1], ip[2], ip[3]);
-                }
-                oappend(F("addInfo('"));
-                oappend(nm.c_str());
-                oappend(F(":"));
-                oappend(key);
-                oappend(F("',1,'"));
-
-                auto it = std::find(foundIPs.begin(), foundIPs.end(), k);
-                auto watchedIt = std::find(watchedIPs.begin(), watchedIPs.end(), k);
-                if (watchedIt != watchedIPs.end())
-                {
-                    size_t watchedIndex = watchedIt - watchedIPs.begin();
-                    oappend(watchedPresent[watchedIndex] ? F("present") : F("not responding"));
-                    oappend(F("');"));
-                }
-                else if (it != foundIPs.end())
-                {
-                    unsigned long ageSec = (millis() - foundSeenAt[it - foundIPs.begin()]) / 1000;
-                    oappend(F("seen "));
-                    oappend(String(ageSec).c_str());
-                    oappend(F("s ago');"));
-                }
-                else
-                {
-                    oappend(F("not seen in last scan');"));
-                }
-            }
+            oappend(key);
+            oappend(F("',1,'"));
+            size_t watchedIndex = std::find(watchedIPs.begin(), watchedIPs.end(), k) - watchedIPs.begin();
+            oappend(watchedPresent[watchedIndex] ? F("present');") : F("not responding');"));
         }
     }
 
@@ -432,27 +368,7 @@ void PresenceSwitchUsermod::advanceQueue()
 {
     bool success = pingGotReply;
 
-    if (mode == Mode::SCAN)
-    {
-        uint32_t k = queue[queueIndex];
-        if (success && foundIPs.size() < PRESENCE_MAX_FOUND &&
-            std::find(foundIPs.begin(), foundIPs.end(), k) == foundIPs.end())
-        {
-            foundIPs.push_back(k);
-            foundSeenAt.push_back(millis());
-        }
-
-        auto watchedIt = std::find(watchedIPs.begin(), watchedIPs.end(), k);
-        if (watchedIt != watchedIPs.end() && success)
-        {
-            size_t watchedIndex = watchedIt - watchedIPs.begin();
-            watchedPresent[watchedIndex] = true;
-            watchedSeenAt[watchedIndex] = millis();
-            anyPresent = true;
-            lastSeenTime = millis();
-        }
-    }
-    else if (mode == Mode::PRESENCE)
+    if (mode == Mode::PRESENCE)
     {
         size_t watchedIndex = queueIndex;
         if (success)
@@ -461,53 +377,28 @@ void PresenceSwitchUsermod::advanceQueue()
             watchedSeenAt[watchedIndex] = millis();
             anyPresent = true;
             lastSeenTime = millis();
-            finishQueue(); // no need to probe the remaining watched devices this round
-            return;
         }
-        if (presenceRetriesLeft > 0)
+        else if (presenceRetriesLeft > 0)
         {
             // phones/tablets in power-save mode can be slow to answer; retry before giving up on this device
             presenceRetriesLeft--;
             startPing(keyToIp(queue[queueIndex]));
             return;
         }
-        watchedPresent[watchedIndex] = false;
+        else
+        {
+            watchedPresent[watchedIndex] = false;
+        }
     }
 
     queueIndex++;
     if (queueIndex >= queue.size())
     {
-        if (mode == Mode::PRESENCE)
-            anyPresent = false; // none of the watched devices answered
         finishQueue();
         return;
     }
     presenceRetriesLeft = PRESENCE_PING_RETRIES;
     startPing(keyToIp(queue[queueIndex]));
-}
-
-void PresenceSwitchUsermod::beginScan()
-{
-    if (mode != Mode::IDLE || !WLED_CONNECTED)
-        return;
-
-    IPAddress local = Network.localIP();
-    queue.clear();
-    for (uint32_t k : watchedIPs)
-        queue.push_back(k);
-    for (uint16_t h = 1; h <= PRESENCE_SCAN_HOST_MAX; h++)
-    {
-        if (h == local[3])
-            continue; // skip our own address
-        uint32_t k = ipToKey(IPAddress(local[0], local[1], local[2], (uint8_t)h));
-        if (std::find(queue.begin(), queue.end(), k) == queue.end())
-            queue.push_back(k);
-    }
-    foundIPs.clear();
-    foundSeenAt.clear();
-    queueIndex = 0;
-    mode = Mode::SCAN;
-    startPing(keyToIp(queue[0]));
 }
 
 void PresenceSwitchUsermod::beginPresenceRound()
@@ -522,6 +413,7 @@ void PresenceSwitchUsermod::beginPresenceRound()
 
     queue = watchedIPs;
     queueIndex = 0;
+    anyPresent = false;
     presenceRetriesLeft = PRESENCE_PING_RETRIES;
     mode = Mode::PRESENCE;
     startPing(keyToIp(queue[0]));
