@@ -25,6 +25,7 @@ void InfoProvider::setup()
     um_data->u_type[0] = UMT_BYTE_ARR;
     um_data->u_data[0] = &infoData;
     updateBirthday();
+    applyCalendarCache();
     renderConfigs();
 }
 
@@ -43,6 +44,14 @@ void InfoProvider::loop()
             updateWeather();
         lastWeatherUpdate = millis();
     }
+    if (!calendarFetchedOnce && localTime > 0)
+        applyCalendarCache();
+    if (calendarUrl.length() > 0 && (lastCalendarUpdate == 0 || millis() - lastCalendarUpdate >= (uint32_t)calendarUpdateMinutes * 60000U))
+    {
+        updateCalendar();
+        lastCalendarUpdate = millis();
+        calendarFetchedOnce = true;
+    }
     updateBirthday();
     renderConfigs();
 }
@@ -51,12 +60,16 @@ void InfoProvider::connected()
 {
     lastWeatherUpdate = 0;
     weatherFetchRequested = true;
+    lastCalendarUpdate = 0; // retry promptly once WiFi is actually up, instead of waiting a full interval
 }
 
 void InfoProvider::appendConfigData()
 {
     oappend(F("addInfo('InfoProvider:Enable',1,'<br>Available tags: [temp] [maxTemp] [maxTempPart] [weather] [termin] [birthdayName] [birthdayFull] [birthdayFull0]');"));
     oappend(F("addInfo('InfoProvider:weatherUpdateMinutes',1,'minutes');"));
+    oappend(F("addInfo('InfoProvider:calendarUrl',1,'public Google iCal URL');"));
+    oappend(F("addInfo('InfoProvider:calendarUpdateMinutes',1,'calendar minutes');"));
+    oappend(F("addInfo('InfoProvider:calendarDebug',1,'calendar status');"));
     oappend(F("var f=document.getElementsByName(\"InfoProvider:config01\")[1];if(f&&f.previousSibling&&f.previousSibling.previousSibling)f.previousSibling.previousSibling.nodeValue=' #Info01 ';"));
     oappend(F("var f=document.getElementsByName(\"InfoProvider:config02\")[1];if(f&&f.previousSibling&&f.previousSibling.previousSibling)f.previousSibling.previousSibling.nodeValue=' #Info02 ';"));
     oappend(F("var f=document.getElementsByName(\"InfoProvider:config03\")[1];if(f&&f.previousSibling&&f.previousSibling.previousSibling)f.previousSibling.previousSibling.nodeValue=' #Info03 ';"));
@@ -75,6 +88,336 @@ void InfoProvider::appendConfigData()
     oappend(F("var f=document.getElementsByName(\"InfoProvider:weatherColor08\")[1];if(f&&f.previousSibling&&f.previousSibling.previousSibling)f.previousSibling.previousSibling.nodeValue=' weather color ';"));
     oappend(F("var f=document.getElementsByName(\"InfoProvider:config01\")[1],n=f&&f.previousSibling&&f.previousSibling.previousSibling;if(n){var h=document.createElement('span');h.innerHTML='<div style=\"border-top:1px solid currentColor;margin:8px 0\"></div><b>Configs</b><br>';n.parentNode.insertBefore(h,n);}"));
     oappend(F("var f=document.getElementsByName(\"InfoProvider:BD01\")[1],n=f&&f.previousSibling&&f.previousSibling.previousSibling;if(n){var h=document.createElement('span');h.innerHTML='<div style=\"border-top:1px solid currentColor;margin:8px 0\"></div><b>Birthday list</b><br>';n.parentNode.insertBefore(h,n);}"));
+}
+
+static int calendarDaySerial(int yearValue, int monthValue, int dayValue)
+{
+    int days = 0;
+    for (int yearIndex = 2000; yearIndex < yearValue; yearIndex++)
+        days += ((yearIndex % 4 == 0 && (yearIndex % 100 != 0 || yearIndex % 400 == 0)) ? 366 : 365);
+    static const uint16_t monthDays[] = {0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334};
+    days += monthDays[monthValue - 1] + dayValue - 1;
+    if (monthValue > 2 && (yearValue % 4 == 0 && (yearValue % 100 != 0 || yearValue % 400 == 0)))
+        days++;
+    return days;
+}
+
+static String calendarRuleValue(const String &rule, const char *name)
+{
+    String key = String(name) + '=';
+    int start = rule.indexOf(key);
+    if (start < 0)
+        return "";
+    start += key.length();
+    int end = rule.indexOf(';', start);
+    return rule.substring(start, end < 0 ? rule.length() : end);
+}
+
+static bool calendarDateExcluded(const String &exdates, int yearValue, int monthValue, int dayValue)
+{
+    char date[9];
+    snprintf(date, sizeof(date), "%04d%02d%02d", yearValue, monthValue, dayValue);
+    return exdates.indexOf(date) >= 0;
+}
+
+static void calendarDateAfter(int yearValue, int monthValue, int dayValue, int offset, int &resultYear, int &resultMonth, int &resultDay)
+{
+    resultYear = yearValue;
+    resultMonth = monthValue;
+    resultDay = dayValue;
+    while (offset-- > 0)
+    {
+        resultDay++;
+        int daysInMonth = 31;
+        if (resultMonth == 4 || resultMonth == 6 || resultMonth == 9 || resultMonth == 11)
+            daysInMonth = 30;
+        else if (resultMonth == 2)
+            daysInMonth = (resultYear % 4 == 0 && (resultYear % 100 != 0 || resultYear % 400 == 0)) ? 29 : 28;
+        if (resultDay > daysInMonth)
+        {
+            resultDay = 1;
+            resultMonth++;
+            if (resultMonth > 12)
+            {
+                resultMonth = 1;
+                resultYear++;
+            }
+        }
+    }
+}
+
+static bool calendarWeekdayMatches(const String &byDay, int weekdayValue, int dayOfMonth)
+{
+    if (byDay.length() == 0)
+        return true;
+    static const char *names[] = {"SU", "MO", "TU", "WE", "TH", "FR", "SA"};
+    for (uint8_t index = 0; index < 7; index++)
+    {
+        if (byDay.indexOf(names[index]) < 0)
+            continue;
+        int ordinal = 0;
+        int position = byDay.indexOf(names[index]);
+        if (position > 0)
+            ordinal = byDay.substring(0, position).toInt();
+        if (weekdayValue == index + 1 && (ordinal == 0 || ((dayOfMonth - 1) / 7 + 1) == ordinal))
+            return true;
+    }
+    return false;
+}
+
+static bool calendarOccurrenceMatches(const String &rule, int baseYear, int baseMonth, int baseDay, int yearValue, int monthValue, int dayValue, int weekdayValue, int occurrenceOffset)
+{
+    if (rule.length() == 0)
+        return yearValue == baseYear && monthValue == baseMonth && dayValue == baseDay;
+    const String frequency = calendarRuleValue(rule, "FREQ");
+    const int interval = max(1L, calendarRuleValue(rule, "INTERVAL").toInt());
+    const int baseSerial = calendarDaySerial(baseYear, baseMonth, baseDay);
+    const int candidateSerial = calendarDaySerial(yearValue, monthValue, dayValue);
+    if (candidateSerial < baseSerial)
+        return false;
+    const int dayDifference = candidateSerial - baseSerial;
+    const String byMonth = calendarRuleValue(rule, "BYMONTH");
+    const String byMonthDay = calendarRuleValue(rule, "BYMONTHDAY");
+    const String byDay = calendarRuleValue(rule, "BYDAY");
+    if (frequency == "DAILY")
+        return dayDifference % interval == 0;
+    if (frequency == "WEEKLY")
+        return dayDifference % (7 * interval) == 0 && calendarWeekdayMatches(byDay, weekdayValue, dayValue);
+    if (frequency == "MONTHLY")
+    {
+        const int monthDifference = (yearValue - baseYear) * 12 + monthValue - baseMonth;
+        if (monthDifference < 0 || monthDifference % interval != 0)
+            return false;
+        if (byMonthDay.length() > 0)
+            return byMonthDay.toInt() == dayValue;
+        if (byDay.length() > 0)
+            return calendarWeekdayMatches(byDay, weekdayValue, dayValue);
+        return dayValue == baseDay;
+    }
+    if (frequency == "YEARLY")
+    {
+        if ((yearValue - baseYear) < 0 || (yearValue - baseYear) % interval != 0)
+            return false;
+        if (byMonth.length() > 0 && byMonth.toInt() != monthValue)
+            return false;
+        if (byMonthDay.length() > 0)
+            return byMonthDay.toInt() == dayValue;
+        return monthValue == baseMonth && dayValue == baseDay;
+    }
+    return false;
+}
+
+// weekday() returns 1=Sunday..7=Saturday; index accordingly for German short names.
+static const char *calendarGermanWeekday(uint8_t weekdayValue)
+{
+    static const char *names[] = {"So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"};
+    return names[(weekdayValue - 1) % 7];
+}
+
+// Converts a UTC iCal date/time ("Z" suffix) into local wall-clock date/time components,
+// so recurrence and "already passed today" checks compare like-for-like against localTime.
+static void calendarUtcToLocal(int utcYear, int utcMonth, int utcDay, int utcHour, int utcMinute, int utcSecond,
+                                int &localYear, int &localMonth, int &localDay, int &localMinuteOfDay)
+{
+    tmElements_t tm;
+    tm.Year = CalendarYrToTm(utcYear);
+    tm.Month = utcMonth;
+    tm.Day = utcDay;
+    tm.Hour = utcHour;
+    tm.Minute = utcMinute;
+    tm.Second = utcSecond;
+    const time_t utcEpoch = makeTime(tm);
+    const time_t localEpoch = utcEpoch + ((long)localTime - (long)toki.second());
+    localYear = year(localEpoch);
+    localMonth = month(localEpoch);
+    localDay = day(localEpoch);
+    localMinuteOfDay = hour(localEpoch) * 60 + minute(localEpoch);
+}
+
+bool InfoProvider::updateCalendar()
+{
+    WiFiClient client;
+    HTTPClient http;
+    if (!WLED_CONNECTED || !http.begin(client, calendarUrl))
+    {
+        calendarDebug = F("Calendar HTTP begin failed");
+        return false;
+    }
+    http.setTimeout(8000);
+    const int status = http.GET();
+    if (status != HTTP_CODE_OK)
+    {
+        calendarDebug = F("Calendar HTTP ");
+        calendarDebug += status;
+        http.end();
+        return false;
+    }
+
+    WiFiClient *stream = http.getStreamPtr();
+    size_t responseBytes = 0;
+    String eventStart;
+    String eventRule;
+    String eventExdates;
+    String eventSummary;
+    String bestEvent;
+    String bestSummaryPlain;
+    bool bestIsTimed = false;
+    uint16_t eventCount = 0;
+    uint16_t matchingEventCount = 0;
+    int bestDay = 7;
+    int bestMinutes = 1441;
+    const int todaySerial = calendarDaySerial(year(localTime), month(localTime), day(localTime));
+
+    bool inEvent = false;
+    while (stream && (http.connected() || stream->available()))
+    {
+        String line = stream->readStringUntil('\n');
+        responseBytes += line.length() + 1;
+        line.trim();
+
+        if (line == F("BEGIN:VEVENT"))
+        {
+            eventCount++;
+            inEvent = true;
+            eventStart = "";
+            eventRule = "";
+            eventExdates = "";
+            eventSummary = "";
+        }
+        else if (inEvent && line.startsWith(F("DTSTART")))
+            eventStart = line.substring(line.indexOf(':') + 1);
+        else if (inEvent && line.startsWith(F("RRULE:")))
+            eventRule = line.substring(6);
+        else if (inEvent && line.startsWith(F("EXDATE")))
+            eventExdates += line.substring(line.indexOf(':') + 1);
+        else if (inEvent && line.startsWith(F("SUMMARY:")))
+            eventSummary = line.substring(8);
+        else if (inEvent && line == F("END:VEVENT"))
+        {
+            inEvent = false;
+            if (eventStart.length() < 8 || eventSummary.length() == 0)
+                continue;
+            int eventYear = eventStart.substring(0, 4).toInt();
+            int eventMonth = eventStart.substring(4, 6).toInt();
+            int eventDay = eventStart.substring(6, 8).toInt();
+            int eventMinutes = 0;
+            const bool isTimed = eventStart.length() >= 13 && eventStart[8] == 'T';
+            // Google iCal exports timed events in UTC ("...Z"); convert to local wall-clock
+            // time before comparing against localTime, otherwise the timezone offset makes
+            // "still upcoming today" events look like they already passed (or vice versa).
+            const bool isUtc = isTimed && eventStart.endsWith("Z");
+            if (isTimed)
+            {
+                const int utcHour = eventStart.substring(9, 11).toInt();
+                const int utcMinute = eventStart.substring(11, 13).toInt();
+                if (isUtc)
+                {
+                    const int utcSecond = eventStart.length() >= 15 ? eventStart.substring(13, 15).toInt() : 0;
+                    calendarUtcToLocal(eventYear, eventMonth, eventDay, utcHour, utcMinute, utcSecond,
+                                       eventYear, eventMonth, eventDay, eventMinutes);
+                }
+                else
+                    eventMinutes = utcHour * 60 + utcMinute;
+            }
+            const int currentMinutes = hour(localTime) * 60 + minute(localTime);
+
+            int dayOffset = -1;
+            int candidateYear = year(localTime);
+            int candidateMonth = month(localTime);
+            int candidateDay = day(localTime);
+            for (uint8_t offset = 0; offset <= 6; offset++)
+            {
+                int testYear, testMonth, testDay;
+                calendarDateAfter(candidateYear, candidateMonth, candidateDay, offset, testYear, testMonth, testDay);
+                int testWeekday = (weekday(localTime) - 1 + offset) % 7 + 1;
+                if (calendarDateExcluded(eventExdates, testYear, testMonth, testDay))
+                    continue;
+                if (!calendarOccurrenceMatches(eventRule, eventYear, eventMonth, eventDay, testYear, testMonth, testDay, testWeekday, offset))
+                    continue;
+                if (offset == 0 && isTimed && eventMinutes < currentMinutes)
+                    continue;
+                const String until = calendarRuleValue(eventRule, "UNTIL");
+                if (until.length() >= 8 && calendarDaySerial(testYear, testMonth, testDay) > calendarDaySerial(until.substring(0, 4).toInt(), until.substring(4, 6).toInt(), until.substring(6, 8).toInt()))
+                    continue;
+                dayOffset = offset;
+                break;
+            }
+            if (dayOffset < 0)
+                continue;
+            matchingEventCount++;
+            // TODO: add a separate template tag listing all-day events within the lookahead
+            // window (currently only nextCalendarEvent/[termin] is exposed).
+            // All-day events carry eventMinutes==0, so without this they'd always outrank a
+            // same-day timed event; sort all-day events after any still-upcoming timed one.
+            const int sortMinutes = isTimed ? eventMinutes : 1440;
+            if (dayOffset < bestDay || (dayOffset == bestDay && sortMinutes < bestMinutes))
+            {
+                bestDay = dayOffset;
+                bestMinutes = sortMinutes;
+                bestEvent = eventSummary;
+                bestSummaryPlain = eventSummary;
+                bestIsTimed = isTimed;
+                if (isTimed)
+                    bestEvent = String(eventMinutes / 60) + ':' + (eventMinutes % 60 < 10 ? "0" : "") + String(eventMinutes % 60) + ' ' + bestEvent;
+            }
+        }
+    }
+    http.end();
+
+    if (bestEvent.length() == 0)
+    {
+        nextCalendarEvent = "";
+        calendarDebug = F("HTTP 200 bytes=");
+        calendarDebug += responseBytes;
+        calendarDebug += F(" events=");
+        calendarDebug += eventCount;
+        calendarDebug += F(" matches=");
+        calendarDebug += matchingEventCount;
+        calendarDebug += F(" no event within 6 days");
+        return true;
+    }
+    String prefix = bestDay == 0 ? F("Heute") : (bestDay == 1 ? F("Morgen") : String(calendarGermanWeekday((weekday(localTime) + bestDay - 1) % 7 + 1)));
+    nextCalendarEvent = prefix + ' ' + bestEvent;
+    // Cache the absolute occurrence so it can be shown immediately on next boot, before the
+    // first fetch/parse of the (potentially large) ics file has completed.
+    calendarCacheDaySerial = todaySerial + bestDay;
+    calendarCacheMinutes = bestIsTimed ? (int16_t)bestMinutes : (int16_t)-1;
+    calendarCacheSummary = bestSummaryPlain;
+    calendarDebug = F("HTTP 200 bytes=");
+    calendarDebug += responseBytes;
+    calendarDebug += F(" events=");
+    calendarDebug += eventCount;
+    calendarDebug += F(" matches=");
+    calendarDebug += matchingEventCount;
+    calendarDebug += F(" result=");
+    calendarDebug += nextCalendarEvent;
+    return true;
+}
+
+// Reconstructs [termin] from the last persisted cache so an event is shown right after boot,
+// before WiFi/NTP are ready and the first ics fetch+parse (which can take a while) completes.
+void InfoProvider::applyCalendarCache()
+{
+    if (localTime == 0 || calendarCacheDaySerial < 0 || calendarCacheSummary.length() == 0)
+        return;
+    const int todaySerial = calendarDaySerial(year(localTime), month(localTime), day(localTime));
+    const int dayOffset = calendarCacheDaySerial - todaySerial;
+    if (dayOffset < 0 || dayOffset > 6)
+    {
+        nextCalendarEvent = "";
+        return;
+    }
+    const bool isTimed = calendarCacheMinutes >= 0;
+    if (dayOffset == 0 && isTimed && calendarCacheMinutes < hour(localTime) * 60 + minute(localTime))
+    {
+        nextCalendarEvent = "";
+        return;
+    }
+    String prefix = dayOffset == 0 ? F("Heute") : (dayOffset == 1 ? F("Morgen") : String(calendarGermanWeekday((weekday(localTime) + dayOffset - 1) % 7 + 1)));
+    String event = calendarCacheSummary;
+    if (isTimed)
+        event = String(calendarCacheMinutes / 60) + ':' + (calendarCacheMinutes % 60 < 10 ? "0" : "") + String(calendarCacheMinutes % 60) + ' ' + event;
+    nextCalendarEvent = prefix + ' ' + event;
 }
 
 uint32_t InfoProvider::getWeatherColor() const
@@ -579,10 +922,17 @@ bool InfoProvider::readFromConfig(JsonObject &root)
     latitude = 0.0f;
     longitude = 0.0f;
     openWeatherApiKey = top["openWeatherApiKey"] | openWeatherApiKey;
+    calendarUrl = top["calendarUrl"] | calendarUrl;
+    calendarUpdateMinutes = top["calendarUpdateMinutes"] | calendarUpdateMinutes;
+    calendarDebug = top["calendarDebug"] | calendarDebug;
+    calendarCacheSummary = top["calendarCacheSummary"] | calendarCacheSummary;
+    calendarCacheDaySerial = top["calendarCacheDay"] | calendarCacheDaySerial;
+    calendarCacheMinutes = top["calendarCacheMinutes"] | calendarCacheMinutes;
     weatherUpdateMinutes = top["weatherUpdateMinutes"] | weatherUpdateMinutes;
     roundTemperature = top["roundTemperature"] | roundTemperature;
     lastWeatherFetch = top["lastWeatherFetch"] | lastWeatherFetch;
     weatherUpdateMinutes = constrain(weatherUpdateMinutes, (uint16_t)1, (uint16_t)1440);
+    calendarUpdateMinutes = constrain(calendarUpdateMinutes, (uint16_t)1, (uint16_t)1440);
     lastWeatherUpdate = 0;
     weatherFetchRequested = true;
     if (top["location"].isNull() || top["country"].isNull() || top["openWeatherApiKey"].isNull() || top["weatherUpdateMinutes"].isNull() || top["roundTemperature"].isNull())
@@ -626,6 +976,12 @@ void InfoProvider::addToConfig(JsonObject &root)
     top["location"] = location;
     top["country"] = country;
     top["openWeatherApiKey"] = openWeatherApiKey;
+    top["calendarUrl"] = calendarUrl;
+    top["calendarUpdateMinutes"] = calendarUpdateMinutes;
+    top["calendarDebug"] = calendarDebug;
+    top["calendarCacheSummary"] = calendarCacheSummary;
+    top["calendarCacheDay"] = calendarCacheDaySerial;
+    top["calendarCacheMinutes"] = calendarCacheMinutes;
     top["weatherUpdateMinutes"] = weatherUpdateMinutes;
     top["roundTemperature"] = roundTemperature;
     top["lastWeatherFetch"] = lastWeatherFetch;
