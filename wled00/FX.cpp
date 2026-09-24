@@ -7508,9 +7508,7 @@ void mode_2Dscrollingtext(void)
   bool infoAlias = false;
   uint32_t infoAliasColor = 0;
   if (UsermodManager::getUMData(&infoExchange, USERMOD_ID_INFO_PROVIDER) && infoExchange->u_size > 0 && infoExchange->u_data)
-  {
     infoData = static_cast<scroll_info_data_t *>(infoExchange->u_data[0]);
-  }
   char sec[5];
   int AmPmHour = hour(localTime);
   bool isitAM = true;
@@ -7568,15 +7566,12 @@ void mode_2Dscrollingtext(void)
         {
           const uint8_t infoIndex = token[6] - '1';
           const size_t infoLen = strnlen(infoData->text[infoIndex], WLED_MAX_SEGNAME_LEN);
-          if (infoData->valid[infoIndex] && infoLen > 0)
+          if (infoData->valid[infoIndex] && infoLen > 0 && result_pos + infoLen < WLED_MAX_SEGNAME_LEN)
           {
-            if (result_pos + infoLen < WLED_MAX_SEGNAME_LEN)
-            {
-              memcpy(text + result_pos, infoData->text[infoIndex], infoLen);
-              result_pos += infoLen;
-              infoAlias = true;
-              infoAliasColor = infoData->color[infoIndex];
-            }
+            memcpy(text + result_pos, infoData->text[infoIndex], infoLen);
+            result_pos += infoLen;
+            infoAlias = true;
+            infoAliasColor = infoData->color[infoIndex];
           }
           temp[0] = '\0';
           advance = 7;

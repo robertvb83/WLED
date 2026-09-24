@@ -27,6 +27,10 @@ private:
     uint16_t calendarUpdateMinutes = 30;
     uint32_t lastCalendarUpdate = 0;
     String calendarDebug = "Not fetched";
+    String calendarCacheSummary;
+    int32_t calendarCacheDaySerial = -1;
+    int16_t calendarCacheMinutes = -1;
+    bool calendarFetchedOnce = false;
     bool weatherColors[8] = {false, false, false, false, false, false, false, false};
     String configs[8] = {
         "Test text", "", "", "", "", "", "", ""};
@@ -51,6 +55,7 @@ private:
     bool updateLocation();
     bool updateWeather();
     bool updateCalendar();
+    void applyCalendarCache();
     void fetchWeatherNow();
     String renderWledTokens(const String &source) const;
     String renderTemplate(const String &source) const;
