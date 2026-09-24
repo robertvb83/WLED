@@ -44,9 +44,9 @@ void InfoProvider::loop()
             updateWeather();
         lastWeatherUpdate = millis();
     }
-    if (!calendarFetchedOnce && localTime > 0)
+    if (!calendarFetchedOnce && toki.getTimeSource() != TOKI_TS_NONE)
         applyCalendarCache();
-    if (calendarUrl.length() > 0 && (lastCalendarUpdate == 0 || millis() - lastCalendarUpdate >= (uint32_t)calendarUpdateMinutes * 60000U))
+    if (calendarUrl.length() > 0 && toki.getTimeSource() != TOKI_TS_NONE && (lastCalendarUpdate == 0 || millis() - lastCalendarUpdate >= (uint32_t)calendarUpdateMinutes * 60000U))
     {
         updateCalendar();
         lastCalendarUpdate = millis();
@@ -398,7 +398,7 @@ bool InfoProvider::updateCalendar()
 // before WiFi/NTP are ready and the first ics fetch+parse (which can take a while) completes.
 void InfoProvider::applyCalendarCache()
 {
-    if (localTime == 0 || calendarCacheDaySerial < 0 || calendarCacheSummary.length() == 0)
+    if (toki.getTimeSource() == TOKI_TS_NONE || calendarCacheDaySerial < 0 || calendarCacheSummary.length() == 0)
         return;
     const int todaySerial = calendarDaySerial(year(localTime), month(localTime), day(localTime));
     const int dayOffset = calendarCacheDaySerial - todaySerial;
@@ -628,7 +628,7 @@ bool InfoProvider::updateWeather()
         weatherDebug += F(" weather=");
         weatherDebug += weather;
     }
-    if (localTime > 0)
+    if (toki.getTimeSource() != TOKI_TS_NONE)
     {
         char timestamp[24];
         snprintf(timestamp, sizeof(timestamp), "%04d-%02d-%02d %02d:%02d:%02d",
