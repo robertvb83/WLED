@@ -37,13 +37,22 @@ void InfoProvider::loop()
         return;
 
     lastUpdate = millis();
-    if (weatherFetchRequested || (openWeatherApiKey.length() > 0 && location.length() > 0 && (lastWeatherUpdate == 0 || millis() - lastWeatherUpdate >= (uint32_t)weatherUpdateMinutes * 60000U)))
+    const bool weatherInitialFetchReady = !weatherFetchRequested || toki.getTimeSource() != TOKI_TS_NONE;
+    const uint32_t weatherDelayMs = weatherRetryCount > 0 && weatherRetryCount <= CalendarRetryDelayCount
+                                        ? CalendarRetryDelaysSeconds[weatherRetryCount - 1] * 1000U
+                                        : (uint32_t)weatherUpdateMinutes * 60000U;
+    if (weatherInitialFetchReady && (weatherFetchRequested || (openWeatherApiKey.length() > 0 && location.length() > 0 && (lastWeatherUpdate == 0 || millis() - lastWeatherUpdate >= weatherDelayMs))))
     {
+        bool weatherSuccess = false;
         weatherFetchRequested = false;
         if (latitude == 0.0f && longitude == 0.0f)
-            updateLocation();
+            weatherSuccess = updateLocation();
         if (latitude != 0.0f || longitude != 0.0f)
-            updateWeather();
+            weatherSuccess = updateWeather();
+        if (weatherSuccess)
+            weatherRetryCount = 0;
+        else if (weatherRetryCount <= CalendarRetryDelayCount)
+            weatherRetryCount++;
         lastWeatherUpdate = millis();
     }
     if (!calendarFetchedOnce && toki.getTimeSource() != TOKI_TS_NONE)
@@ -69,6 +78,7 @@ void InfoProvider::loop()
 void InfoProvider::connected()
 {
     lastWeatherUpdate = 0;
+    weatherRetryCount = 0;
     weatherFetchRequested = true;
     lastCalendarUpdate = 0;
     calendarRetryCount = 0;
@@ -659,7 +669,14 @@ void InfoProvider::fetchWeatherNow()
     latitude = 0.0f;
     longitude = 0.0f;
     if (updateLocation())
-        updateWeather();
+    {
+        if (updateWeather())
+            weatherRetryCount = 0;
+        else if (weatherRetryCount <= CalendarRetryDelayCount)
+            weatherRetryCount++;
+    }
+    else if (weatherRetryCount <= CalendarRetryDelayCount)
+        weatherRetryCount++;
     lastWeatherUpdate = millis();
 }
 
@@ -950,6 +967,7 @@ bool InfoProvider::readFromConfig(JsonObject &root)
     weatherUpdateMinutes = constrain(weatherUpdateMinutes, (uint16_t)1, (uint16_t)1440);
     calendarUpdateMinutes = constrain(calendarUpdateMinutes, (uint16_t)1, (uint16_t)1440);
     lastWeatherUpdate = 0;
+    weatherRetryCount = 0;
     lastCalendarUpdate = 0;
     calendarRetryCount = 0;
     calendarFetchedOnce = false;
