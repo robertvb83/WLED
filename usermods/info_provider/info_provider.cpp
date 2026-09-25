@@ -5,6 +5,8 @@ const char InfoProvider::_enabled[] PROGMEM = "Enable";
 
 static InfoProvider infoProvider;
 REGISTER_USERMOD(infoProvider);
+static constexpr uint32_t CalendarRetryDelaysSeconds[] = {15, 30, 60, 120, 300};
+static constexpr uint8_t CalendarRetryDelayCount = sizeof(CalendarRetryDelaysSeconds) / sizeof(CalendarRetryDelaysSeconds[0]);
 
 void InfoProvider::setup()
 {
@@ -46,11 +48,19 @@ void InfoProvider::loop()
     }
     if (!calendarFetchedOnce && toki.getTimeSource() != TOKI_TS_NONE)
         applyCalendarCache();
-    if (calendarUrl.length() > 0 && toki.getTimeSource() != TOKI_TS_NONE && (lastCalendarUpdate == 0 || millis() - lastCalendarUpdate >= (uint32_t)calendarUpdateMinutes * 60000U))
+    const uint32_t calendarDelayMs = calendarRetryCount > 0 && calendarRetryCount <= CalendarRetryDelayCount
+                                         ? CalendarRetryDelaysSeconds[calendarRetryCount - 1] * 1000U
+                                         : (uint32_t)calendarUpdateMinutes * 60000U;
+    if (calendarUrl.length() > 0 && toki.getTimeSource() != TOKI_TS_NONE && (lastCalendarUpdate == 0 || millis() - lastCalendarUpdate >= calendarDelayMs))
     {
-        updateCalendar();
+        if (updateCalendar())
+        {
+            calendarFetchedOnce = true;
+            calendarRetryCount = 0;
+        }
+        else if (calendarRetryCount <= CalendarRetryDelayCount)
+            calendarRetryCount++;
         lastCalendarUpdate = millis();
-        calendarFetchedOnce = true;
     }
     updateBirthday();
     renderConfigs();
@@ -60,7 +70,9 @@ void InfoProvider::connected()
 {
     lastWeatherUpdate = 0;
     weatherFetchRequested = true;
-    lastCalendarUpdate = 0; // retry promptly once WiFi is actually up, instead of waiting a full interval
+    lastCalendarUpdate = 0;
+    calendarRetryCount = 0;
+    calendarFetchedOnce = false;
 }
 
 void InfoProvider::appendConfigData()
@@ -227,7 +239,11 @@ static void calendarUtcToLocal(int utcYear, int utcMonth, int utcDay, int utcHou
     tm.Minute = utcMinute;
     tm.Second = utcSecond;
     const time_t utcEpoch = makeTime(tm);
-    const time_t localEpoch = utcEpoch + ((long)localTime - (long)toki.second());
+    const long rawOffsetSeconds = (long)localTime - (long)toki.second();
+    const long localOffsetSeconds = rawOffsetSeconds >= 0
+                                        ? ((rawOffsetSeconds + 30) / 60) * 60
+                                        : ((rawOffsetSeconds - 30) / 60) * 60;
+    const time_t localEpoch = (time_t)((long)utcEpoch + localOffsetSeconds);
     localYear = year(localEpoch);
     localMonth = month(localEpoch);
     localDay = day(localEpoch);
@@ -934,6 +950,9 @@ bool InfoProvider::readFromConfig(JsonObject &root)
     weatherUpdateMinutes = constrain(weatherUpdateMinutes, (uint16_t)1, (uint16_t)1440);
     calendarUpdateMinutes = constrain(calendarUpdateMinutes, (uint16_t)1, (uint16_t)1440);
     lastWeatherUpdate = 0;
+    lastCalendarUpdate = 0;
+    calendarRetryCount = 0;
+    calendarFetchedOnce = false;
     weatherFetchRequested = true;
     if (top["location"].isNull() || top["country"].isNull() || top["openWeatherApiKey"].isNull() || top["weatherUpdateMinutes"].isNull() || top["roundTemperature"].isNull())
         complete = false;
