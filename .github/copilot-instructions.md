@@ -16,14 +16,15 @@ Always reference these instructions first and fallback to search or bash command
 - PlatformIO (required only for firmware compilation): `pip install -r requirements.txt`
 
 ## Build and Test
+
 <!-- HUMAN_ONLY_START -->
 
-| Command | Purpose | Typical Time |
-|---|---|---|
-| `npm run build` | Build web UI → generates `wled00/html_*.h` and `wled00/js_*.h` headers | ~3 s |
-| `npm test` | Run test suite | ~40 s |
-| `npm run dev` | Watch mode — auto-rebuilds web UI on file changes | — |
-| `pio run -e <env>` | Build firmware for a hardware target | 15–20 min |
+| Command            | Purpose                                                                | Typical Time |
+| ------------------ | ---------------------------------------------------------------------- | ------------ |
+| `npm run build`    | Build web UI → generates `wled00/html_*.h` and `wled00/js_*.h` headers | ~3 s         |
+| `npm test`         | Run test suite                                                         | ~40 s        |
+| `npm run dev`      | Watch mode — auto-rebuilds web UI on file changes                      | —            |
+| `pio run -e <env>` | Build firmware for a hardware target                                   | 15–20 min    |
 
 <!-- HUMAN_ONLY_END -->
 
@@ -36,14 +37,15 @@ For detailed build timeouts, development workflows, troubleshooting, and validat
 
 ### Usermod Guidelines
 
-   - New custom effects can be added into the user_fx usermod. Read the [user_fx documentation](https://github.com/wled/WLED/blob/main/usermods/user_fx/README.md) for guidance.
-   - Other usermods may be based on the [EXAMPLE usermod](https://github.com/wled/WLED/tree/main/usermods/EXAMPLE). Never edit the example, always create a copy!
-   - New usermod IDs can be added into [wled00/const.h](https://github.com/wled/WLED/blob/main/wled00/const.h#L160).
-   - To activate a usermod, a custom build configuration should be used. Add the usermod name to `custom_usermods`.
+- New custom effects can be added into the user_fx usermod. Read the [user_fx documentation](https://github.com/wled/WLED/blob/main/usermods/user_fx/README.md) for guidance.
+- Other usermods may be based on the [EXAMPLE usermod](https://github.com/wled/WLED/tree/main/usermods/EXAMPLE). Never edit the example, always create a copy!
+- New usermod IDs can be added into [wled00/const.h](https://github.com/wled/WLED/blob/main/wled00/const.h#L160).
+- To activate a usermod, a custom build configuration should be used. Add the usermod name to `custom_usermods`.
 
 ## Project Structure Overview
 
 ### Project Branch / Release Structure
+
 <!-- HUMAN_ONLY_START -->
 
 ```text
@@ -55,28 +57,31 @@ main                # Main development trunk (daily/nightly) 17.0.0-dev
 (tag) v0.13.3       # old version 0.13.3 (no maintenance)
 (tag) v0. ... . ... # historical versions 0.12.x and before
 ```
+
 <!-- HUMAN_ONLY_END -->
 
-- ``main``: development trunk (daily/nightly)
-- ``V5`` : code rework for esp-idf 5.5.x (unstable) - branched from ``main``.
-- ``16_x``: maintenance for release 16.x.y
-- ``0_15_x``: bugfixing / maintenance for release 0.15.x
+- `main`: development trunk (daily/nightly)
+- `V5` : code rework for esp-idf 5.5.x (unstable) - branched from `main`.
+- `16_x`: maintenance for release 16.x.y
+- `0_15_x`: bugfixing / maintenance for release 0.15.x
 
 ### Repository Structure
 
-tl;dr: 
-* Firmware source: `wled00/` (C++). Web UI source: `wled00/data/`. Build targets: `platformio.ini`.
-* Auto-generated headers: `wled00/html_*.h` and `wled00/js_*.h` — **never edit or commit**.
-* ArduinoJSON + AsyncJSON: `wled00/src/dependencies/json` (included via `wled.h`). CI/CD: `.github/workflows/`.
-* Usermods: `usermods/` (C++, with individual library.json).
-* Contributor docs: `docs/` (coding guidelines, etc).
+tl;dr:
+
+- Firmware source: `wled00/` (C++). Web UI source: `wled00/data/`. Build targets: `platformio.ini`.
+- Auto-generated headers: `wled00/html_*.h` and `wled00/js_*.h` — **never edit or commit**.
+- ArduinoJSON + AsyncJSON: `wled00/src/dependencies/json` (included via `wled.h`). CI/CD: `.github/workflows/`.
+- Usermods: `usermods/` (C++, with individual library.json).
+- Contributor docs: `docs/` (coding guidelines, etc).
 
 <!-- HUMAN_ONLY_START -->
+
 Detailed overview:
 
 ```text
 wled00/                 # Main firmware source (C++) "WLED core"
-  ├── data/             # Web interface files 
+  ├── data/             # Web interface files
   │   ├── index.htm     # Main UI
   │   ├── settings*.htm # Settings pages
   │   └── *.js/*.css    # Frontend resources
@@ -101,8 +106,11 @@ docs/                  # Contributor docs, coding guidelines
 ```
 
 <!-- HUMAN_ONLY_END -->
+
 ## General Guidelines
 
+- **PresenceSwitch branch workflow:** For any work related to the `PresenceSwitch` usermod, switch to `feature/presence-switch` first and make all changes only on that branch. For testing, merge the changes into `feature/all` and compile there; do not make PresenceSwitch implementation changes directly on `feature/all`.
+- **InfoProvider branch workflow:** For any work related to the `InfoProvider` usermod, switch to `feature/info-scrolling-text` first and make all changes only on that branch. For testing, merge the changes into `feature/all` and compile there; do not make InfoProvider implementation changes directly on `feature/all`.
 - **Repository language is English.** Suggest translations for non-English content.
 - **Use VS Code with PlatformIO extension** for best development experience.
 - **Never edit or commit** `wled00/html_*.h` and `wled00/js_*.h` — auto-generated from `wled00/data/`.
@@ -116,12 +124,12 @@ docs/                  # Contributor docs, coding guidelines
   <br>**`WLED_DISABLE_*`**: `2D`, `ADALIGHT`, `ALEXA`, `BROWNOUT_DET`, `ESPNOW`, `FILESYSTEM`, `HUESYNC`, `IMPROV_WIFISCAN`, `INFRARED`, `LOXONE`, `MQTT`, `OTA`, `PARTICLESYSTEM1D`, `PARTICLESYSTEM2D`, `PIXELFORGE`, `WEBSOCKETS`
   <br>**`WLED_ENABLE_*`**: `ADALIGHT`, `AOTA`, `DMX`, `DMX_INPUT`, `DMX_OUTPUT`, `FS_EDITOR`, `GIF`, `HUB75MATRIX`, `JSONLIVE`, `LOXONE`, `MQTT`, `PIXART`, `PXMAGIC`, `USERMOD_PAGE`, `WEBSOCKETS`, `WPA_ENTERPRISE`
 - **C++ formatting available**: `clang-format` is installed but not in CI
-- No automated linting is configured — match existing code style in files you edit. 
+- No automated linting is configured — match existing code style in files you edit.
 
 Refer to `docs/cpp.instructions.md` and `docs/web.instructions.md` for language-specific conventions, and `docs/cicd.instructions.md` for GitHub Actions workflows.
 
 ### Pull Request Expectations
 
 - **No force-push on open PRs.** Once a pull request is open and being reviewed, do not force-push (`git push --force`) to the branch. Force-pushing rewrites history that reviewers may have already commented on, making it impossible to track incremental changes. Use regular commits or `git merge` to incorporate feedback; the branch will be squash-merged when it is accepted.
-- **Modifications to ``platformio.ini`` MUST be approved explicitly** by a *maintainer* or *WLED organisation Member*. Modifications to the global build environment may break github action builds. Always flag them.
-- **Document your changes in the PR.** Every pull request should include a clear description of *what* changed and *why*. If the change affects user-visible behavior, describe the expected impact. Link to related issues where applicable. Provide screenshots to showcase new features.
+- **Modifications to `platformio.ini` MUST be approved explicitly** by a _maintainer_ or _WLED organisation Member_. Modifications to the global build environment may break github action builds. Always flag them.
+- **Document your changes in the PR.** Every pull request should include a clear description of _what_ changed and _why_. If the change affects user-visible behavior, describe the expected impact. Link to related issues where applicable. Provide screenshots to showcase new features.
