@@ -9,6 +9,10 @@ See also: `.github/copilot-instructions.md`, `.github/agent-build.instructions.m
 
 Always reference these instructions - including coding guidelines in `docs/` - first and fallback to search or bash commands only when you encounter unexpected information that does not match the info here.
 
+**If a terminal/PowerShell command fails unexpectedly or repeats the same error**, check
+`docs/agent-terminal-error-routes.md` for the known cause and fix before retrying the same
+approach again.
+
 ## Build Commands
 
 | Command                | Purpose                                               | Timeout    |
@@ -25,7 +29,7 @@ required C headers for firmware compilation.
 
 ### PresenceSwitch Branch Workflow
 
-- For any work related to the `PresenceSwitch` usermod, switch to `feature/presence-switch` first and make all changes only on that branch.
+- For any work related to the `PresenceSwitch` usermod, switch to `feature/wifi-presence-switch` first and make all changes only on that branch.
 - For testing, merge the changes into `feature/all` and compile there; do not make PresenceSwitch implementation changes directly on `feature/all`.
 
 ### InfoProvider Branch Workflow

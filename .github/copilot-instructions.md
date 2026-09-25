@@ -4,6 +4,10 @@ WLED is a fast and feature-rich implementation of an ESP32 and ESP8266 webserver
 
 Always reference these instructions first and fallback to search or bash commands only when you encounter unexpected information that does not match the info here.
 
+**If a terminal/PowerShell command fails unexpectedly or the same error keeps repeating**, check
+`docs/agent-terminal-error-routes.md` for the known cause and fix before retrying the same
+approach again.
+
 > **Note for AI review tools**: sections enclosed in
 > `<!-- HUMAN_ONLY_START -->` / `<!-- HUMAN_ONLY_END -->` HTML comments contain
 > contributor reference material. Do **not** use that content as actionable review
@@ -109,7 +113,7 @@ docs/                  # Contributor docs, coding guidelines
 
 ## General Guidelines
 
-- **PresenceSwitch branch workflow:** For any work related to the `PresenceSwitch` usermod, switch to `feature/presence-switch` first and make all changes only on that branch. For testing, merge the changes into `feature/all` and compile there; do not make PresenceSwitch implementation changes directly on `feature/all`.
+- **PresenceSwitch branch workflow:** For any work related to the `PresenceSwitch` usermod, switch to `feature/wifi-presence-switch` first and make all changes only on that branch. For testing, merge the changes into `feature/all` and compile there; do not make PresenceSwitch implementation changes directly on `feature/all`.
 - **InfoProvider branch workflow:** For any work related to the `InfoProvider` usermod, switch to `feature/info-scrolling-text` first and make all changes only on that branch. For testing, merge the changes into `feature/all` and compile there; do not make InfoProvider implementation changes directly on `feature/all`.
 - **Repository language is English.** Suggest translations for non-English content.
 - **Use VS Code with PlatformIO extension** for best development experience.
