@@ -288,6 +288,7 @@ void PresenceSwitchUsermod::applySwitch(bool on)
             return; // only turn back on if we were the ones who turned it off
         bri = restoreBri;
         switchedOffByMod = false;
+        strip.restartRuntime(); // reset all segment runtime data (e.g. stuck scrolling text/font cache after a long off period)
     }
     else
     {
