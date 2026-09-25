@@ -7,6 +7,10 @@ static InfoProvider infoProvider;
 REGISTER_USERMOD(infoProvider);
 static constexpr uint32_t CalendarRetryDelaysSeconds[] = {15, 30, 60, 120, 300};
 static constexpr uint8_t CalendarRetryDelayCount = sizeof(CalendarRetryDelaysSeconds) / sizeof(CalendarRetryDelaysSeconds[0]);
+// updateCalendar()/updateWeather() are fully synchronous, multi-second HTTP+parse calls; keep them
+// out of the first few boot loop ticks so they can't stall handlePresets() while the boot preset
+// is still being applied.
+static constexpr uint32_t BootFetchGraceMs = 5000;
 
 void InfoProvider::setup()
 {
@@ -41,7 +45,7 @@ void InfoProvider::loop()
     const uint32_t weatherDelayMs = weatherRetryCount > 0 && weatherRetryCount <= CalendarRetryDelayCount
                                         ? CalendarRetryDelaysSeconds[weatherRetryCount - 1] * 1000U
                                         : (uint32_t)weatherUpdateMinutes * 60000U;
-    if (weatherInitialFetchReady && (weatherFetchRequested || (openWeatherApiKey.length() > 0 && location.length() > 0 && (lastWeatherUpdate == 0 || millis() - lastWeatherUpdate >= weatherDelayMs))))
+    if (millis() >= BootFetchGraceMs && weatherInitialFetchReady && (weatherFetchRequested || (openWeatherApiKey.length() > 0 && location.length() > 0 && (lastWeatherUpdate == 0 || millis() - lastWeatherUpdate >= weatherDelayMs))))
     {
         bool weatherSuccess = false;
         weatherFetchRequested = false;
@@ -60,7 +64,7 @@ void InfoProvider::loop()
     const uint32_t calendarDelayMs = calendarRetryCount > 0 && calendarRetryCount <= CalendarRetryDelayCount
                                          ? CalendarRetryDelaysSeconds[calendarRetryCount - 1] * 1000U
                                          : (uint32_t)calendarUpdateMinutes * 60000U;
-    if (calendarUrl.length() > 0 && toki.getTimeSource() != TOKI_TS_NONE && (lastCalendarUpdate == 0 || millis() - lastCalendarUpdate >= calendarDelayMs))
+    if (millis() >= BootFetchGraceMs && calendarUrl.length() > 0 && toki.getTimeSource() != TOKI_TS_NONE && (lastCalendarUpdate == 0 || millis() - lastCalendarUpdate >= calendarDelayMs))
     {
         if (updateCalendar())
         {
