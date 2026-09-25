@@ -288,7 +288,12 @@ void PresenceSwitchUsermod::applySwitch(bool on)
             return; // only turn back on if we were the ones who turned it off
         bri = restoreBri;
         switchedOffByMod = false;
-        strip.restartRuntime(); // reset all segment runtime data (e.g. stuck scrolling text/font cache after a long off period)
+        // only reset segments actually running Scrolling Text (stuck font cache after a long off period);
+        // a full strip.restartRuntime() would also reset unrelated segments (e.g. an active playlist preset)
+        for (size_t s = 0; s < strip.getSegmentsNum(); s++) {
+            Segment &seg = strip.getSegment(s);
+            if (seg.mode == FX_MODE_2DSCROLLTEXT) seg.markForReset();
+        }
     }
     else
     {
