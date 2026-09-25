@@ -38,7 +38,7 @@ private:
     };
 
     // config
-    bool enabled = true;
+    bool enabled = false;
     uint16_t offDelayMin = 10;      // minutes with no watched device present before switching off (0 = never)
     uint16_t checkIntervalSec = 30; // how often watched devices are (re-)pinged
 
@@ -167,7 +167,7 @@ public:
         JsonObject top = root[FPSTR(_name)];
         bool configComplete = !top.isNull();
 
-        configComplete &= getJsonValue(top[FPSTR(_enabled)], enabled, true);
+        configComplete &= getJsonValue(top[FPSTR(_enabled)], enabled, false);
         configComplete &= getJsonValue(top[FPSTR(_offDelay)], offDelayMin, 10);
         configComplete &= getJsonValue(top[FPSTR(_interval)], checkIntervalSec, 30);
 
