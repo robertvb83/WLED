@@ -10,7 +10,7 @@ static constexpr uint8_t CalendarRetryDelayCount = sizeof(CalendarRetryDelaysSec
 // updateCalendar()/updateWeather() are fully synchronous, multi-second HTTP+parse calls; keep them
 // out of the first few boot loop ticks so they can't stall handlePresets() while the boot preset
 // is still being applied.
-static constexpr uint32_t BootFetchGraceMs = 5000;
+static constexpr uint32_t BootFetchGraceMs = 1000;
 
 void InfoProvider::setup()
 {
