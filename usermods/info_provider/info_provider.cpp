@@ -93,6 +93,7 @@ void InfoProvider::appendConfigData()
 {
     oappend(F("addInfo('InfoProvider:Enable',1,'<br>Available tags: [temp] [maxTemp] [maxTempPart] [weather] [termin] [birthdayName] [birthdayFull] [birthdayFull0]');"));
     oappend(F("addInfo('InfoProvider:weatherUpdateMinutes',1,'minutes');"));
+    oappend(F("addInfo('InfoProvider:weatherDebug',1,'current and forecast status, matching entries, and raw maxT');"));
     oappend(F("addInfo('InfoProvider:calendarUrl',1,'public Google iCal URL');"));
     oappend(F("addInfo('InfoProvider:calendarUpdateMinutes',1,'calendar minutes');"));
     oappend(F("addInfo('InfoProvider:calendarDebug',1,'calendar status');"));
@@ -587,6 +588,9 @@ bool InfoProvider::updateWeather()
 
     bool currentTemperatureValid = false;
     float currentTemperatureValue = 0.0f;
+    float forecastMaxTemperature = -1000.0f;
+    bool forecastAvailable = false;
+    uint8_t matchingForecasts = 0;
     if (currentParsed)
     {
         JsonObject current = currentDocument.as<JsonObject>();
@@ -599,37 +603,56 @@ bool InfoProvider::updateWeather()
         const char *description = current["weather"][0]["description"] | "";
         if (description[0] != '\0')
             weather = description;
-        dailyHighTemperature = currentTemperatureValid ? currentTemperature : "";
-        if (forecastParsed)
+        if (currentTemperatureValid)
         {
             const int64_t timezoneOffset = current["timezone"] | 0;
             const int64_t currentDay = ((current["dt"] | 0) + timezoneOffset) / 86400;
-            float maxTemperature = currentTemperatureValue;
-            uint8_t matchingForecasts = 0;
-            for (JsonObject item : forecastDocument["list"].as<JsonArray>())
+            if (dailyHighDay != currentDay)
             {
-                if ((((item["dt"] | 0) + timezoneOffset) / 86400) != currentDay)
-                    continue;
-                matchingForecasts++;
-                const float candidate = item["main"]["temp_max"] | -1000.0f;
-                if (candidate > maxTemperature)
-                    maxTemperature = candidate;
+                dailyHighTemperature = "";
+                dailyHighDay = currentDay;
             }
-            if (maxTemperature > -999.0f)
-                dailyHighTemperature = roundTemperature ? String(roundf(maxTemperature), 0) : String(maxTemperature, 1);
-            weatherDebug = F("Forecast values=");
-            weatherDebug += matchingForecasts;
+            if (forecastParsed)
+            {
+                float maxTemperature = currentTemperatureValue;
+                for (JsonObject item : forecastDocument["list"].as<JsonArray>())
+                {
+                    if ((((item["dt"] | 0) + timezoneOffset) / 86400) != currentDay)
+                        continue;
+                    const float candidate = item["main"]["temp_max"] | -1000.0f;
+                    if (candidate <= -999.0f)
+                        continue;
+                    matchingForecasts++;
+                    if (candidate > forecastMaxTemperature)
+                        forecastMaxTemperature = candidate;
+                    if (candidate > maxTemperature)
+                        maxTemperature = candidate;
+                }
+                if (matchingForecasts > 0)
+                {
+                    dailyHighTemperature = roundTemperature ? String(roundf(maxTemperature), 0) : String(maxTemperature, 1);
+                    forecastAvailable = true;
+                }
+            }
         }
     }
-    success = currentTemperatureValid && weather.length() > 0;
-    if (!success)
+    success = currentTemperatureValid && weather.length() > 0 && forecastAvailable;
+    weatherDebug = F("Weather current=");
+    weatherDebug += currentStatus;
+    weatherDebug += currentParsed ? F(" OK") : currentErrorText;
+    weatherDebug += F(" forecast=");
+    weatherDebug += forecastStatus;
+    if (forecastParsed)
     {
-        weatherDebug = F("Weather current=");
-        weatherDebug += currentStatus;
-        weatherDebug += currentParsed ? F(" OK") : currentErrorText;
-        weatherDebug += F(" forecast=");
-        weatherDebug += forecastStatus;
-        weatherDebug += forecastParsed ? F(" OK") : forecastErrorText;
+        weatherDebug += F(" OK matches=");
+        weatherDebug += matchingForecasts;
+        weatherDebug += F(" maxT=");
+        weatherDebug += matchingForecasts > 0 ? String(forecastMaxTemperature, 2) : String(F("none"));
+    }
+    else
+    {
+        weatherDebug += ' ';
+        weatherDebug += forecastErrorText;
     }
     if (success)
     {
@@ -641,22 +664,11 @@ bool InfoProvider::updateWeather()
         weatherDebug += dailyHighTemperature;
         weatherDebug += F(" weather=");
         weatherDebug += weather;
-        if (forecastParsed)
-        {
-            weatherDebug += F(" forecast used");
-        }
-    }
-    if (success)
-    {
-        weatherDebug += String(latitude, 5);
-        weatherDebug += F(" lon=");
-        weatherDebug += String(longitude, 5);
-        weatherDebug += F(" temp=");
-        weatherDebug += currentTemperature;
-        weatherDebug += F(" max=");
-        weatherDebug += dailyHighTemperature;
-        weatherDebug += F(" weather=");
-        weatherDebug += weather;
+        weatherDebug += F(" forecast matches=");
+        weatherDebug += matchingForecasts;
+        weatherDebug += F(" maxT=");
+        if (matchingForecasts > 0)
+            weatherDebug += String(forecastMaxTemperature, 2);
     }
     if (toki.getTimeSource() != TOKI_TS_NONE)
     {
@@ -1024,6 +1036,7 @@ void InfoProvider::addToConfig(JsonObject &root)
     top["calendarCacheDay"] = calendarCacheDaySerial;
     top["calendarCacheMinutes"] = calendarCacheMinutes;
     top["weatherUpdateMinutes"] = weatherUpdateMinutes;
+    top["weatherDebug"] = weatherDebug;
     top["roundTemperature"] = roundTemperature;
     top["lastWeatherFetch"] = lastWeatherFetch;
     for (uint8_t index = 0; index < 8; index++)
