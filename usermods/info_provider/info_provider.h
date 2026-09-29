@@ -42,6 +42,7 @@ private:
     bool weatherFetchRequested = false;
     String currentTemperature;
     String dailyHighTemperature;
+    int64_t dailyHighDay = -1;
     String weather;
     String nextCalendarEvent;
     String birthdayName;
