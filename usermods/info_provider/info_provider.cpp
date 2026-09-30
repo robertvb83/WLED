@@ -562,7 +562,7 @@ bool InfoProvider::updateWeather()
     String currentErrorText;
     String forecastErrorText;
     DynamicJsonDocument currentDocument(4096);
-    DynamicJsonDocument forecastDocument(32768);
+    DynamicJsonDocument forecastDocument(8192);
 
     if (currentStatus == HTTP_CODE_OK && currentResponse.length() <= 8192)
     {
@@ -577,7 +577,13 @@ bool InfoProvider::updateWeather()
 
     if (forecastStatus == HTTP_CODE_OK && forecastResponse.length() <= 32768)
     {
-        DeserializationError error = deserializeJson(forecastDocument, forecastResponse);
+        // Only extract dt/temp_max per entry; parsing the full response overflows a small
+        // buffer and can fail with NoMemory even though the request itself succeeded.
+        StaticJsonDocument<128> forecastFilter;
+        JsonObject itemFilter = forecastFilter.createNestedArray("list").createNestedObject();
+        itemFilter["dt"] = true;
+        itemFilter["main"]["temp_max"] = true;
+        DeserializationError error = deserializeJson(forecastDocument, forecastResponse, DeserializationOption::Filter(forecastFilter));
         if (!error)
             forecastParsed = true;
         else
@@ -589,7 +595,6 @@ bool InfoProvider::updateWeather()
     bool currentTemperatureValid = false;
     float currentTemperatureValue = 0.0f;
     float forecastMaxTemperature = -1000.0f;
-    bool forecastAvailable = false;
     uint8_t matchingForecasts = 0;
     if (currentParsed)
     {
@@ -606,7 +611,8 @@ bool InfoProvider::updateWeather()
         if (currentTemperatureValid)
         {
             const int64_t timezoneOffset = current["timezone"] | 0;
-            const int64_t currentDay = ((current["dt"] | 0) + timezoneOffset) / 86400;
+            const int64_t currentAdjusted = (current["dt"] | 0) + timezoneOffset;
+            const int64_t currentDay = currentAdjusted / 86400;
             if (dailyHighDay != currentDay)
             {
                 dailyHighTemperature = "";
@@ -617,8 +623,11 @@ bool InfoProvider::updateWeather()
                 float maxTemperature = currentTemperatureValue;
                 for (JsonObject item : forecastDocument["list"].as<JsonArray>())
                 {
-                    if ((((item["dt"] | 0) + timezoneOffset) / 86400) != currentDay)
+                    const int64_t itemAdjusted = (item["dt"] | 0) + timezoneOffset;
+                    if (itemAdjusted / 86400 != currentDay)
                         continue;
+                    if (itemAdjusted < currentAdjusted)
+                        continue; // forecast slot for today has already passed
                     const float candidate = item["main"]["temp_max"] | -1000.0f;
                     if (candidate <= -999.0f)
                         continue;
@@ -631,12 +640,16 @@ bool InfoProvider::updateWeather()
                 if (matchingForecasts > 0)
                 {
                     dailyHighTemperature = roundTemperature ? String(roundf(maxTemperature), 0) : String(maxTemperature, 1);
-                    forecastAvailable = true;
+                }
+                else
+                {
+                    dailyHighTemperature = ""; // no warmer forecast still ahead today
                 }
             }
         }
     }
-    success = currentTemperatureValid && weather.length() > 0 && forecastAvailable;
+    // A parsed forecast with no remaining warmer slot today (e.g. late evening) is still success.
+    success = currentTemperatureValid && weather.length() > 0 && forecastParsed;
     weatherDebug = F("Weather current=");
     weatherDebug += currentStatus;
     weatherDebug += currentParsed ? F(" OK") : currentErrorText;
