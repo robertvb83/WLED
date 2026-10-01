@@ -74,6 +74,10 @@ void InfoProvider::loop()
         else if (calendarRetryCount <= CalendarRetryDelayCount)
             calendarRetryCount++;
         lastCalendarUpdate = millis();
+        char timestamp[24];
+        snprintf(timestamp, sizeof(timestamp), "%04d-%02d-%02d %02d:%02d:%02d",
+                 year(localTime), month(localTime), day(localTime), hour(localTime), minute(localTime), second(localTime));
+        lastCalendarFetch = timestamp;
     }
     updateBirthday();
     renderConfigs();
@@ -92,29 +96,8 @@ void InfoProvider::connected()
 void InfoProvider::appendConfigData()
 {
     oappend(F("addInfo('InfoProvider:Enable',1,'<br>Available tags: [temp] [maxTemp] [maxTempPart] [weather] [termin] [birthdayName] [birthdayFull] [birthdayFull0]');"));
-    oappend(F("addInfo('InfoProvider:weatherUpdateMinutes',1,'minutes');"));
-    oappend(F("addInfo('InfoProvider:weatherDebug',1,'current and forecast status, matching entries, and raw maxT');"));
-    oappend(F("addInfo('InfoProvider:calendarUrl',1,'public Google iCal URL');"));
-    oappend(F("addInfo('InfoProvider:calendarUpdateMinutes',1,'calendar minutes');"));
-    oappend(F("addInfo('InfoProvider:calendarDebug',1,'calendar status');"));
-    oappend(F("var f=document.getElementsByName(\"InfoProvider:config01\")[1];if(f&&f.previousSibling&&f.previousSibling.previousSibling)f.previousSibling.previousSibling.nodeValue=' #Info01 ';"));
-    oappend(F("var f=document.getElementsByName(\"InfoProvider:config02\")[1];if(f&&f.previousSibling&&f.previousSibling.previousSibling)f.previousSibling.previousSibling.nodeValue=' #Info02 ';"));
-    oappend(F("var f=document.getElementsByName(\"InfoProvider:config03\")[1];if(f&&f.previousSibling&&f.previousSibling.previousSibling)f.previousSibling.previousSibling.nodeValue=' #Info03 ';"));
-    oappend(F("var f=document.getElementsByName(\"InfoProvider:config04\")[1];if(f&&f.previousSibling&&f.previousSibling.previousSibling)f.previousSibling.previousSibling.nodeValue=' #Info04 ';"));
-    oappend(F("var f=document.getElementsByName(\"InfoProvider:config05\")[1];if(f&&f.previousSibling&&f.previousSibling.previousSibling)f.previousSibling.previousSibling.nodeValue=' #Info05 ';"));
-    oappend(F("var f=document.getElementsByName(\"InfoProvider:config06\")[1];if(f&&f.previousSibling&&f.previousSibling.previousSibling)f.previousSibling.previousSibling.nodeValue=' #Info06 ';"));
-    oappend(F("var f=document.getElementsByName(\"InfoProvider:config07\")[1];if(f&&f.previousSibling&&f.previousSibling.previousSibling)f.previousSibling.previousSibling.nodeValue=' #Info07 ';"));
-    oappend(F("var f=document.getElementsByName(\"InfoProvider:config08\")[1];if(f&&f.previousSibling&&f.previousSibling.previousSibling)f.previousSibling.previousSibling.nodeValue=' #Info08 ';"));
-    oappend(F("var f=document.getElementsByName(\"InfoProvider:weatherColor01\")[1];if(f&&f.previousSibling&&f.previousSibling.previousSibling)f.previousSibling.previousSibling.nodeValue=' weather color ';"));
-    oappend(F("var f=document.getElementsByName(\"InfoProvider:weatherColor02\")[1];if(f&&f.previousSibling&&f.previousSibling.previousSibling)f.previousSibling.previousSibling.nodeValue=' weather color ';"));
-    oappend(F("var f=document.getElementsByName(\"InfoProvider:weatherColor03\")[1];if(f&&f.previousSibling&&f.previousSibling.previousSibling)f.previousSibling.previousSibling.nodeValue=' weather color ';"));
-    oappend(F("var f=document.getElementsByName(\"InfoProvider:weatherColor04\")[1];if(f&&f.previousSibling&&f.previousSibling.previousSibling)f.previousSibling.previousSibling.nodeValue=' weather color ';"));
-    oappend(F("var f=document.getElementsByName(\"InfoProvider:weatherColor05\")[1];if(f&&f.previousSibling&&f.previousSibling.previousSibling)f.previousSibling.previousSibling.nodeValue=' weather color ';"));
-    oappend(F("var f=document.getElementsByName(\"InfoProvider:weatherColor06\")[1];if(f&&f.previousSibling&&f.previousSibling.previousSibling)f.previousSibling.previousSibling.nodeValue=' weather color ';"));
-    oappend(F("var f=document.getElementsByName(\"InfoProvider:weatherColor07\")[1];if(f&&f.previousSibling&&f.previousSibling.previousSibling)f.previousSibling.previousSibling.nodeValue=' weather color ';"));
-    oappend(F("var f=document.getElementsByName(\"InfoProvider:weatherColor08\")[1];if(f&&f.previousSibling&&f.previousSibling.previousSibling)f.previousSibling.previousSibling.nodeValue=' weather color ';"));
-    oappend(F("var f=document.getElementsByName(\"InfoProvider:config01\")[1],n=f&&f.previousSibling&&f.previousSibling.previousSibling;if(n){var h=document.createElement('span');h.innerHTML='<div style=\"border-top:1px solid currentColor;margin:8px 0\"></div><b>Configs</b><br>';n.parentNode.insertBefore(h,n);}"));
-    oappend(F("var f=document.getElementsByName(\"InfoProvider:BD01\")[1],n=f&&f.previousSibling&&f.previousSibling.previousSibling;if(n){var h=document.createElement('span');h.innerHTML='<div style=\"border-top:1px solid currentColor;margin:8px 0\"></div><b>Birthday list</b><br>';n.parentNode.insertBefore(h,n);}"));
+    oappend(F("(()=>{const groups={Weather:[['roundTemperature','Round °C'],['location','City'],['country','Country'],['openWeatherApiKey','API key'],['updateMinutes','Refresh (min)'],['debug','Status'],['lastFetch','Last fetched']],Calendar:[['url','iCal URL'],['updateMinutes','Refresh (min)'],['debug','Status'],['cacheSummary','Cached event'],['cacheDay','Cached day'],['cacheMinutes','Event time'],['lastFetch','Last fetched']]};for(const [group,fields] of Object.entries(groups)){const first=d.getElementsByName('InfoProvider:'+group+':'+fields[0][0])[1];if(!first)continue;const section=first.closest('.sec');const heading=[...section.querySelectorAll('p')].find(e=>e.textContent.trim()===group);if(!heading)continue;const table=d.createElement('table');table.style.cssText='width:100%;table-layout:fixed;border-collapse:collapse';const body=table.createTBody();for(const [key,label] of fields){const row=body.insertRow();const labelCell=row.insertCell();const valueCell=row.insertCell();labelCell.textContent=label;labelCell.style.cssText='width:36%;padding:3px;vertical-align:middle';valueCell.style.cssText='padding:3px';const controls=Array.from(d.getElementsByName('InfoProvider:'+group+':'+key));for(const control of controls){if(control.type==='hidden'||control.type==='text'||control.type==='number'||control.type==='checkbox'){valueCell.appendChild(control);if(control.type==='text'){control.style.cssText='width:180px;max-width:100%;box-sizing:border-box;text-align:left';control.setAttribute('aria-label',label)}}}}let node=heading.nextSibling;while(node&&!(node.nodeName==='HR'&&node.classList.contains('sml'))){const next=node.nextSibling;node.remove();node=next}heading.after(table)}})();"));
+    oappend(F("(()=>{const first=d.getElementsByName('InfoProvider:Info:Info01')[1];if(!first)return;const section=first.closest('.sec');const heading=[...section.querySelectorAll('p')].find(e=>e.textContent.trim()==='Info');if(!heading)return;const table=d.createElement('table');table.style.cssText='width:100%;table-layout:fixed;border-collapse:collapse';const head=table.createTHead().insertRow();for(const title of ['Config-Key','Text-String','weather color']){const th=d.createElement('th');th.textContent=title;th.style.cssText='text-align:center;padding:4px';head.appendChild(th)}const body=table.createTBody();for(let i=1;i<=8;i++){const row=body.insertRow();const keyCell=row.insertCell();const textCell=row.insertCell();const colorCell=row.insertCell();keyCell.textContent='#Info0'+i;keyCell.style.cssText='padding:3px;white-space:nowrap';textCell.style.padding='3px';colorCell.style.cssText='padding:3px;text-align:center';const textFields=Array.from(d.getElementsByName('InfoProvider:Info:Info0'+i));for(const field of textFields){if(field.type==='hidden'||field.type==='text'){textCell.appendChild(field);if(field.type==='text'){field.style.cssText='width:180px;max-width:100%;text-align:left';field.setAttribute('aria-label','Text string '+i)}}}const colorFields=Array.from(d.getElementsByName('InfoProvider:Info:weatherColor0'+i));for(const field of colorFields){if(field.type==='hidden'||field.type==='checkbox'){colorCell.appendChild(field);if(field.type==='checkbox')field.setAttribute('aria-label','Use weather color for text '+i)}}}let node=heading.nextSibling;while(node&&!(node.nodeName==='HR'&&node.classList.contains('sml'))){const next=node.nextSibling;node.remove();node=next}heading.after(table)})();"));
 }
 
 static int calendarDaySerial(int yearValue, int monthValue, int dayValue)
@@ -977,22 +960,27 @@ bool InfoProvider::readFromConfig(JsonObject &root)
 {
     loadBirthdayDefaults();
     JsonObject top = root[FPSTR(_name)];
+    JsonObject weatherSettings = top["Weather"];
+    JsonObject calendarSettings = top["Calendar"];
+    JsonObject infoSettings = top["Info"];
+    JsonObject birthdaySettings = top["Birthdays"];
     bool complete = !top.isNull();
     enabled = top[FPSTR(_enabled)] | enabled;
-    location = top["location"] | location;
-    country = top["country"] | country;
+    location = weatherSettings["location"] | (top["location"] | location);
+    country = weatherSettings["country"] | (top["country"] | country);
     latitude = 0.0f;
     longitude = 0.0f;
-    openWeatherApiKey = top["openWeatherApiKey"] | openWeatherApiKey;
-    calendarUrl = top["calendarUrl"] | calendarUrl;
-    calendarUpdateMinutes = top["calendarUpdateMinutes"] | calendarUpdateMinutes;
-    calendarDebug = top["calendarDebug"] | calendarDebug;
-    calendarCacheSummary = top["calendarCacheSummary"] | calendarCacheSummary;
-    calendarCacheDaySerial = top["calendarCacheDay"] | calendarCacheDaySerial;
-    calendarCacheMinutes = top["calendarCacheMinutes"] | calendarCacheMinutes;
-    weatherUpdateMinutes = top["weatherUpdateMinutes"] | weatherUpdateMinutes;
-    roundTemperature = top["roundTemperature"] | roundTemperature;
-    lastWeatherFetch = top["lastWeatherFetch"] | lastWeatherFetch;
+    openWeatherApiKey = weatherSettings["openWeatherApiKey"] | (top["openWeatherApiKey"] | openWeatherApiKey);
+    calendarUrl = calendarSettings["url"] | (top["calendarUrl"] | calendarUrl);
+    calendarUpdateMinutes = calendarSettings["updateMinutes"] | (top["calendarUpdateMinutes"] | calendarUpdateMinutes);
+    lastCalendarFetch = calendarSettings["lastFetch"] | lastCalendarFetch;
+    calendarDebug = calendarSettings["debug"] | (top["calendarDebug"] | calendarDebug);
+    calendarCacheSummary = calendarSettings["cacheSummary"] | (top["calendarCacheSummary"] | calendarCacheSummary);
+    calendarCacheDaySerial = calendarSettings["cacheDay"] | (top["calendarCacheDay"] | calendarCacheDaySerial);
+    calendarCacheMinutes = calendarSettings["cacheMinutes"] | (top["calendarCacheMinutes"] | calendarCacheMinutes);
+    weatherUpdateMinutes = weatherSettings["updateMinutes"] | (top["weatherUpdateMinutes"] | weatherUpdateMinutes);
+    roundTemperature = weatherSettings["roundTemperature"] | (top["roundTemperature"] | roundTemperature);
+    lastWeatherFetch = weatherSettings["lastFetch"] | (top["lastWeatherFetch"] | lastWeatherFetch);
     weatherUpdateMinutes = constrain(weatherUpdateMinutes, (uint16_t)1, (uint16_t)1440);
     calendarUpdateMinutes = constrain(calendarUpdateMinutes, (uint16_t)1, (uint16_t)1440);
     lastWeatherUpdate = 0;
@@ -1001,21 +989,27 @@ bool InfoProvider::readFromConfig(JsonObject &root)
     calendarRetryCount = 0;
     calendarFetchedOnce = false;
     weatherFetchRequested = true;
-    if (top["location"].isNull() || top["country"].isNull() || top["openWeatherApiKey"].isNull() || top["weatherUpdateMinutes"].isNull() || top["roundTemperature"].isNull())
+    if ((weatherSettings["location"].isNull() && top["location"].isNull()) ||
+        (weatherSettings["country"].isNull() && top["country"].isNull()) ||
+        (weatherSettings["openWeatherApiKey"].isNull() && top["openWeatherApiKey"].isNull()) ||
+        (weatherSettings["updateMinutes"].isNull() && top["weatherUpdateMinutes"].isNull()) ||
+        (weatherSettings["roundTemperature"].isNull() && top["roundTemperature"].isNull()))
         complete = false;
     for (uint8_t index = 0; index < 8; index++)
     {
         char key[9];
-        snprintf(key, sizeof(key), "config%02u", index + 1);
-        if (top[key].isNull())
+        char legacyKey[9];
+        snprintf(key, sizeof(key), "Info%02u", index + 1);
+        snprintf(legacyKey, sizeof(legacyKey), "config%02u", index + 1);
+        if (infoSettings[key].isNull() && top[legacyKey].isNull())
             complete = false;
-        configs[index] = top[key] | configs[index];
+        configs[index] = infoSettings[key] | (top[legacyKey] | configs[index]);
         if (configs[index].length() > WLED_MAX_SEGNAME_LEN)
             configs[index].remove(WLED_MAX_SEGNAME_LEN);
         char colorKey[15];
         snprintf(colorKey, sizeof(colorKey), "weatherColor%02u", index + 1);
-        weatherColors[index] = top[colorKey] | weatherColors[index];
-        if (top[colorKey].isNull())
+        weatherColors[index] = infoSettings[colorKey] | (top[colorKey] | weatherColors[index]);
+        if (infoSettings[colorKey].isNull() && top[colorKey].isNull())
             complete = false;
     }
     for (uint8_t index = 0; index < BirthdaySlots; index++)
@@ -1024,9 +1018,9 @@ bool InfoProvider::readFromConfig(JsonObject &root)
         char legacyKey[13];
         snprintf(key, sizeof(key), "BD%02u", index + 1);
         snprintf(legacyKey, sizeof(legacyKey), "birthday%02u", index + 1);
-        if (top[key].isNull() && top[legacyKey].isNull())
+        if (birthdaySettings[key].isNull() && top[key].isNull() && top[legacyKey].isNull())
             complete = false;
-        birthdays[index] = top[key] | (top[legacyKey] | birthdays[index]);
+        birthdays[index] = birthdaySettings[key] | (top[key] | (top[legacyKey] | birthdays[index]));
         if (birthdays[index].length() > WLED_MAX_SEGNAME_LEN)
             birthdays[index].remove(WLED_MAX_SEGNAME_LEN);
     }
@@ -1039,32 +1033,37 @@ void InfoProvider::addToConfig(JsonObject &root)
 {
     JsonObject top = root.createNestedObject(FPSTR(_name));
     top[FPSTR(_enabled)] = enabled;
-    top["location"] = location;
-    top["country"] = country;
-    top["openWeatherApiKey"] = openWeatherApiKey;
-    top["calendarUrl"] = calendarUrl;
-    top["calendarUpdateMinutes"] = calendarUpdateMinutes;
-    top["calendarDebug"] = calendarDebug;
-    top["calendarCacheSummary"] = calendarCacheSummary;
-    top["calendarCacheDay"] = calendarCacheDaySerial;
-    top["calendarCacheMinutes"] = calendarCacheMinutes;
-    top["weatherUpdateMinutes"] = weatherUpdateMinutes;
-    top["weatherDebug"] = weatherDebug;
-    top["roundTemperature"] = roundTemperature;
-    top["lastWeatherFetch"] = lastWeatherFetch;
+    JsonObject weatherSettings = top.createNestedObject("Weather");
+    weatherSettings["location"] = location;
+    weatherSettings["country"] = country;
+    weatherSettings["openWeatherApiKey"] = openWeatherApiKey;
+    weatherSettings["updateMinutes"] = weatherUpdateMinutes;
+    weatherSettings["roundTemperature"] = roundTemperature;
+    weatherSettings["debug"] = weatherDebug;
+    weatherSettings["lastFetch"] = lastWeatherFetch;
+    JsonObject calendarSettings = top.createNestedObject("Calendar");
+    calendarSettings["url"] = calendarUrl;
+    calendarSettings["updateMinutes"] = calendarUpdateMinutes;
+    calendarSettings["lastFetch"] = lastCalendarFetch;
+    calendarSettings["debug"] = calendarDebug;
+    calendarSettings["cacheSummary"] = calendarCacheSummary;
+    calendarSettings["cacheDay"] = calendarCacheDaySerial;
+    calendarSettings["cacheMinutes"] = calendarCacheMinutes;
+    JsonObject infoSettings = top.createNestedObject("Info");
+    JsonObject birthdaySettings = top.createNestedObject("Birthdays");
     for (uint8_t index = 0; index < 8; index++)
     {
         char key[9];
-        snprintf(key, sizeof(key), "config%02u", index + 1);
-        top[key] = configs[index];
+        snprintf(key, sizeof(key), "Info%02u", index + 1);
+        infoSettings[key] = configs[index];
         char colorKey[15];
         snprintf(colorKey, sizeof(colorKey), "weatherColor%02u", index + 1);
-        top[colorKey] = weatherColors[index];
+        infoSettings[colorKey] = weatherColors[index];
     }
     for (uint8_t index = 0; index < BirthdaySlots; index++)
     {
         char key[13];
         snprintf(key, sizeof(key), "BD%02u", index + 1);
-        top[key] = birthdays[index];
+        birthdaySettings[key] = birthdays[index];
     }
 }
