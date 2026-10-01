@@ -25,6 +25,7 @@ private:
     String lastWeatherFetch = "Never";
     String calendarUrl;
     uint16_t calendarUpdateMinutes = 30;
+    String lastCalendarFetch = "Never";
     uint32_t lastCalendarUpdate = 0;
     uint8_t calendarRetryCount = 0;
     String calendarDebug = "Not fetched";
