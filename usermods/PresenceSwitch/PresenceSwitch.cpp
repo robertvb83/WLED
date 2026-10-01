@@ -214,24 +214,6 @@ public:
     {
         String nm = String(FPSTR(_name));
 
-        oappend(F("addInfo('"));
-        oappend(nm.c_str());
-        oappend(F(":"));
-        oappend(String(FPSTR(_offDelay)).c_str());
-        oappend(F("',1,'minutes with no watched device present before switching off (0 = never)');"));
-
-        oappend(F("addInfo('"));
-        oappend(nm.c_str());
-        oappend(F(":"));
-        oappend(String(FPSTR(_interval)).c_str());
-        oappend(F("',1,'seconds between presence checks');"));
-
-        oappend(F("addInfo('"));
-        oappend(nm.c_str());
-        oappend(F(":"));
-        oappend(String(FPSTR(_extraIPs)).c_str());
-        oappend(F("',1,'comma- or space-separated IPv4 addresses to always watch, e.g. 192.168.1.50, 192.168.1.77');"));
-
         for (uint32_t k : watchedIPs)
         {
             IPAddress ip = keyToIp(k);
@@ -245,6 +227,9 @@ public:
             size_t watchedIndex = std::find(watchedIPs.begin(), watchedIPs.end(), k) - watchedIPs.begin();
             oappend(watchedPresent[watchedIndex] ? F("present');") : F("not responding');"));
         }
+
+        oappend(F("(()=>{const first=d.getElementsByName('PresenceSwitch:enabled')[1];if(!first)return;const section=first.closest('.sec');const heading=section.querySelector('h3');const fields=[['enabled','Enabled'],['offDelayMin','Absent delay (min)'],['checkIntervalSec','Check interval (sec)'],['extraIPs','Watch these IPs']];const table=d.createElement('table');table.style.cssText='width:100%;table-layout:fixed;border-collapse:collapse';const body=table.createTBody();for(const [key,label] of fields){const row=body.insertRow();const labelCell=row.insertCell();const valueCell=row.insertCell();labelCell.textContent=label;labelCell.style.cssText='width:36%;padding:3px 12px 3px 3px;vertical-align:middle;text-align:right';valueCell.style.cssText='padding:3px;text-align:left';const controls=Array.from(d.getElementsByName('PresenceSwitch:'+key));const marker=controls.find(e=>e.type==='hidden');if(marker&&marker.previousSibling&&marker.previousSibling.nodeType===3)marker.previousSibling.remove();for(const control of controls){valueCell.appendChild(control);if(control.type==='text'){control.style.cssText='width:180px;max-width:100%;box-sizing:border-box;text-align:left';control.setAttribute('aria-label',label)}else if(control.type==='number'){control.style.width='100px'}}const last=controls[controls.length-1];if(last&&last.nextSibling&&last.nextSibling.nodeName==='BR')last.nextSibling.remove()}heading.after(table)})();"));
+        oappend(F("(()=>{const section=d.getElementsByName('PresenceSwitch:enabled')[1].closest('.sec');const hiddenFields=Array.from(section.getElementsByTagName('input')).filter(e=>e.type==='hidden'&&e.name.indexOf('PresenceSwitch:ip_')===0);if(!hiddenFields.length)return;const first=hiddenFields[0];const anchor=first.previousSibling||first;const title=d.createElement('p');title.textContent='Watched devices';title.style.cssText='margin:10px 0 4px';const table=d.createElement('table');table.style.cssText='width:100%;table-layout:fixed;border-collapse:collapse';const body=table.createTBody();section.insertBefore(title,anchor);section.insertBefore(table,anchor);for(const marker of hiddenFields){const name=marker.name;const key=name.substring(name.indexOf(':ip_')+4);const controls=Array.from(section.getElementsByTagName('input')).filter(e=>e.name===name);const checkbox=controls.find(e=>e.type==='checkbox');if(!checkbox)continue;if(marker.previousSibling&&marker.previousSibling.nodeType===3)marker.previousSibling.remove();let status='';const statusNode=checkbox.nextSibling;if(statusNode&&statusNode.nodeType===3){status=statusNode.textContent.replace(/\u00a0/g,' ').trim();statusNode.remove()}if(checkbox.nextSibling&&checkbox.nextSibling.nodeName==='BR')checkbox.nextSibling.remove();const row=body.insertRow();const labelCell=row.insertCell();const valueCell=row.insertCell();labelCell.textContent=key.replace(/_/g,'.');labelCell.style.cssText='width:36%;padding:3px 12px 3px 3px;vertical-align:middle;text-align:right';valueCell.style.cssText='padding:3px;text-align:left';for(const control of controls)valueCell.appendChild(control);if(status){const statusText=d.createElement('span');statusText.textContent=' '+status;valueCell.appendChild(statusText)}}})();"));
     }
 
     uint16_t getId() override { return USERMOD_ID_PRESENCE_SWITCH; }
