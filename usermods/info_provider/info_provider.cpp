@@ -586,7 +586,7 @@ bool InfoProvider::updateWeather()
         if (!current["main"]["temp"].isNull())
         {
             currentTemperatureValue = current["main"]["temp"].as<float>();
-            currentTemperature = roundTemperature ? String(roundf(currentTemperatureValue), 0) : String(currentTemperatureValue, 1);
+            currentTemperature = roundTemperature ? String(static_cast<int>(roundf(currentTemperatureValue))) : String(currentTemperatureValue, 1);
             currentTemperatureValid = true;
         }
         const char *description = current["weather"][0]["description"] | "";
@@ -623,7 +623,7 @@ bool InfoProvider::updateWeather()
                 }
                 if (matchingForecasts > 0)
                 {
-                    dailyHighTemperature = roundTemperature ? String(roundf(maxTemperature), 0) : String(maxTemperature, 1);
+                    dailyHighTemperature = roundTemperature ? String(static_cast<int>(roundf(maxTemperature))) : String(maxTemperature, 1);
                 }
                 else
                 {
