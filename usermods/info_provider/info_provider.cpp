@@ -12,6 +12,16 @@ static constexpr uint8_t CalendarRetryDelayCount = sizeof(CalendarRetryDelaysSec
 // is still being applied.
 static constexpr uint32_t BootFetchGraceMs = 1000;
 
+static void transliterateCalendarUmlauts(String &text)
+{
+    text.replace("\xC3\x84", "Ae");
+    text.replace("\xC3\x96", "Oe");
+    text.replace("\xC3\x9C", "Ue");
+    text.replace("\xC3\xA4", "ae");
+    text.replace("\xC3\xB6", "oe");
+    text.replace("\xC3\xBC", "ue");
+}
+
 void InfoProvider::setup()
 {
     loadBirthdayDefaults();
@@ -306,7 +316,10 @@ bool InfoProvider::updateCalendar()
         else if (inEvent && line.startsWith(F("EXDATE")))
             eventExdates += line.substring(line.indexOf(':') + 1);
         else if (inEvent && line.startsWith(F("SUMMARY:")))
+        {
             eventSummary = line.substring(8);
+            transliterateCalendarUmlauts(eventSummary);
+        }
         else if (inEvent && line == F("END:VEVENT"))
         {
             inEvent = false;
@@ -430,6 +443,7 @@ void InfoProvider::applyCalendarCache()
     }
     String prefix = dayOffset == 0 ? F("Heute") : (dayOffset == 1 ? F("Morgen") : String(calendarGermanWeekday((weekday(localTime) + dayOffset - 1) % 7 + 1)));
     String event = calendarCacheSummary;
+    transliterateCalendarUmlauts(event);
     if (isTimed)
         event = String(calendarCacheMinutes / 60) + ':' + (calendarCacheMinutes % 60 < 10 ? "0" : "") + String(calendarCacheMinutes % 60) + ' ' + event;
     nextCalendarEvent = prefix + ' ' + event;
